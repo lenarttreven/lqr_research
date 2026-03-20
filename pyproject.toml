@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lqr-research"
+version = "0.1.0"
+description = "Adaptive LQR experiments and benchmark suites implemented in JAX."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "cvxpy",
+    "jax",
+    "jaxtyping",
+    "matplotlib",
+    "numpy",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.scripts]
+lqr-benchmark = "run_benchmark:main"
+lqr-experiment = "run_experiment:main"
+
+[tool.setuptools]
+py-modules = [
+    "lqr_utils",
+    "run_benchmark",
+    "run_experiment",
+    "simulation",
+    "systems",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["algorithms*"]
