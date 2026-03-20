@@ -50,9 +50,8 @@ def run_on_system(
     lam: float = 0.1,
     oslo_mu: float = 0.1,
     oslo_beta: float = 1.0,
-    laglq_delta: float = 0.05,
-    laglq_eps_scale: float = 1.0,
-    laglq_prior_radius: float = 0.05,
+    laglq_beta: float = 0.05,
+    laglq_eps: float = 1e-2,
     laglq_max_dual_iters: int = 50,
 ) -> dict[str, dict]:
     """Run all algorithms on a single system, return results dict."""
@@ -68,11 +67,8 @@ def run_on_system(
         ),
         "LAGLQ": LAGLQ(
             lam=lam,
-            horizon=num_steps,
-            delta=laglq_delta,
-            noise_sigma=system.noise_sigma,
-            prior_radius=laglq_prior_radius,
-            eps_scale=laglq_eps_scale,
+            beta=laglq_beta,
+            eps=laglq_eps,
             max_dual_iters=laglq_max_dual_iters,
             A0=system.A0,
             B0=system.B0,
@@ -165,22 +161,16 @@ def main():
         help="OSLO scaling parameter beta. Default: 1.0.",
     )
     parser.add_argument(
-        "--laglq-delta",
+        "--laglq-beta",
         type=float,
         default=0.05,
-        help="LAGLQ confidence level delta. Default: 0.05.",
+        help="LAGLQ confidence set radius beta. Default: 0.05.",
     )
     parser.add_argument(
-        "--laglq-eps-scale",
+        "--laglq-eps",
         type=float,
-        default=1.0,
-        help="LAGLQ accuracy schedule scale. Default: 1.0.",
-    )
-    parser.add_argument(
-        "--laglq-prior-radius",
-        type=float,
-        default=None,
-        help="LAGLQ prior radius used in beta_t. Default: reuse --perturbation.",
+        default=1e-2,
+        help="LAGLQ dual bisection tolerance. Default: 1e-2.",
     )
     parser.add_argument(
         "--laglq-max-dual-iters",
@@ -218,13 +208,8 @@ def main():
             lam=args.lam,
             oslo_mu=args.oslo_mu,
             oslo_beta=args.oslo_beta,
-            laglq_delta=args.laglq_delta,
-            laglq_eps_scale=args.laglq_eps_scale,
-            laglq_prior_radius=(
-                args.laglq_prior_radius
-                if args.laglq_prior_radius is not None
-                else args.perturbation
-            ),
+            laglq_beta=args.laglq_beta,
+            laglq_eps=args.laglq_eps,
             laglq_max_dual_iters=args.laglq_max_dual_iters,
         )
 

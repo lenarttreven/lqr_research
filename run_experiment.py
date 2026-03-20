@@ -14,7 +14,7 @@ from algorithms.oslo import OSLO, simulate_oslo_many
 from algorithms.thompson_sampling import TS
 
 
-if __name__ == "__main__":
+def main() -> None:
     key = jax.random.PRNGKey(0)
     d_x, d_u = 3, 1
     dt = 0.1
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     Q = jnp.diag(jnp.array([10.0, 1.0, 0.1]))
     R = jnp.array([[0.1]])
 
-    num_trials = 5
+    num_trials = 20
     num_steps = 100
     noise_sigma = 0.1
 
@@ -57,18 +57,17 @@ if __name__ == "__main__":
         "CEC + PE (doubling)": CECPE(lam=1.0, init_act_std=1.0, A0=A0, B0=B0),
         "LAGLQ": LAGLQ(
             lam=1.0,
-            horizon=num_steps,
-            delta=0.05,
-            noise_sigma=noise_sigma,
-            prior_radius=0.05,
-            eps_scale=1.0,
+            beta=1.0,
+            eps=1e-4,
             max_dual_iters=30,
             A0=A0,
             B0=B0,
+            mu_max_cap=0.1,
+            penalty_aux=1e2,
         ),
     }
     oslo_algos = {
-        "OSLO": OSLO(mu=0.1, lam=1.0, beta=1.0, sigma=noise_sigma, A0=A0, B0=B0),
+        "OSLO": OSLO(mu=1e-3, lam=1.0, beta=1.0, sigma=noise_sigma, A0=A0, B0=B0),
     }
 
     # -- Run scan-compatible algorithms --
@@ -112,3 +111,7 @@ if __name__ == "__main__":
 
     # -- Plot --
     plot_regret(results)
+
+
+if __name__ == "__main__":
+    main()
