@@ -61,17 +61,26 @@ def simulate(
         cost = x.T @ Q @ x + u.T @ R @ u  # scalar
         regret = cost - optimal_cost  # scalar
 
+        # current controller gain
+        K = algo_state.K  # (du, dx)
+
         carry_next = (key, x_next, algo_state)
-        return carry_next, (cost, regret)
+        return carry_next, (cost, regret, K)
 
     init_carry = (key, x0, algo_state)
-    _, (costs, regrets) = jax.lax.scan(
+    _, (costs, regrets, gains) = jax.lax.scan(
         one_step, init_carry, xs=jnp.arange(num_steps, dtype=jnp.int32)
     )
+
+    # Expected per-step cost under each controller gain
+    expected_costs = jax.vmap(
+        lambda K: lqr_avg_stage_cost(A, B, Q, R, K, noise_sigma)
+    )(gains)  # (T,)
 
     return {
         "costs": costs,  # (T,)
         "regrets": regrets,  # (T,)
+        "expected_costs": expected_costs,  # (T,)
         "optimal_cost": optimal_cost,
         "k_star": k_star,  # (du, dx)
     }
@@ -100,38 +109,60 @@ def simulate_many(
     )(keys)
 
 
-def plot_regret(
+def plot_results(
     results_dict: dict[str, dict],
-    title: str = "Cumulative Regret Comparison",
+    title: str = "",
     log_y: bool = False,
     save_path: str | None = None,
 ) -> None:
-    """Plot cumulative regret with 20-80% quantile bands.
+    """Plot cumulative regret and per-step excess cost (2 subplots).
 
     Args:
         results_dict: {algo_name: results} where results comes from simulate_many.
-        log_y: If True, use logarithmic y-axis.
+        title: Overall figure title.
+        log_y: If True, use logarithmic y-axis on both subplots.
         save_path: If provided, save the figure to this path.
     """
     linestyles = ["-", "--", ":", "-."]
+    fig, (ax_regret, ax_cost) = plt.subplots(1, 2, figsize=(12, 4))
 
     for i, (name, results) in enumerate(results_dict.items()):
-        cum = jnp.cumsum(results["regrets"], axis=1)  # (num_trials, T)
-        q20, q50, q80 = jnp.quantile(
-            cum, jnp.array([0.2, 0.5, 0.8]), axis=0
-        )  # each (T,)
-        t = jnp.arange(q50.shape[0])
         ls = linestyles[i % len(linestyles)]
-        plt.plot(t, q50, label=name, linestyle=ls)
-        plt.fill_between(t, q20, q80, alpha=0.15)
+        t = jnp.arange(results["regrets"].shape[1])
+
+        # Cumulative regret
+        cum = jnp.cumsum(results["regrets"], axis=1)  # (num_trials, T)
+        q20, q50, q80 = jnp.quantile(cum, jnp.array([0.2, 0.5, 0.8]), axis=0)
+        ax_regret.plot(t, q50, label=name, linestyle=ls)
+        ax_regret.fill_between(t, q20, q80, alpha=0.15)
+
+        # Expected per-step cost minus optimal cost
+        excess = results["expected_costs"] - results["optimal_cost"][:, None]  # (num_trials, T)
+        q20, q50, q80 = jnp.quantile(excess, jnp.array([0.2, 0.5, 0.8]), axis=0)
+        ax_cost.plot(t, q50, label=name, linestyle=ls)
+        ax_cost.fill_between(t, q20, q80, alpha=0.15)
 
     if log_y:
-        plt.yscale("log")
-    plt.xlabel("Time step")
-    plt.ylabel("Cumulative Regret")
-    plt.title(title)
-    plt.grid()
-    plt.legend()
+        ax_regret.set_yscale("log")
+        ax_cost.set_yscale("log")
+    for ax in (ax_regret, ax_cost):
+        ax.set_xlabel("Time step")
+        ax.grid()
+
+    ax_regret.set_ylabel("Cumulative Regret")
+    ax_regret.set_title("Cumulative Regret")
+    ax_cost.set_ylabel("Expected Cost − Optimal Cost")
+    ax_cost.set_title("Expected Per-Step Excess Cost")
+
+    if title:
+        fig.suptitle(title)
+    fig.tight_layout(rect=[0, 0, 1, 0.88])
+
+    # Single legend on top with 3 columns (below suptitle)
+    handles, labels = ax_regret.get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=3,
+               bbox_to_anchor=(0.5, 0.93))
+
     if save_path is not None:
-        plt.savefig(save_path)
+        fig.savefig(save_path, bbox_inches="tight")
     plt.show()

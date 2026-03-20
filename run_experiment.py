@@ -5,7 +5,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from simulation import simulate_many, plot_regret
+from simulation import simulate_many, plot_results
 from algorithms.ofu import OFU
 from algorithms.cec import CEC
 from algorithms.cec_pe import CECPE
@@ -110,7 +110,7 @@ def main() -> None:
         )
 
     # -- Plot --
-    plot_regret(results)
+    plot_results(results)
 
 
 if __name__ == "__main__":

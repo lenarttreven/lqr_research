@@ -362,6 +362,7 @@ def simulate_oslo(
 
     costs = []
     regrets = []
+    gains = []
     x = x0
 
     for t in range(num_steps):
@@ -369,6 +370,9 @@ def simulate_oslo(
 
         # Action
         u, algo_state = algo.get_action(x, algo_state, sub_act)
+
+        # Record current gain
+        gains.append(algo_state.K)
 
         # Environment dynamics
         w = noise_sigma * jax.random.normal(sub_w, shape=(dx,), dtype=A.dtype)
@@ -385,9 +389,15 @@ def simulate_oslo(
 
         x = x_next
 
+    gains_arr = jnp.stack(gains)  # (T, du, dx)
+    expected_costs = jax.vmap(
+        lambda K: lqr_avg_stage_cost(A, B, Q, R, K, noise_sigma)
+    )(gains_arr)  # (T,)
+
     return {
         "costs": jnp.array(costs),
         "regrets": jnp.array(regrets),
+        "expected_costs": expected_costs,
         "optimal_cost": optimal_cost,
         "k_star": k_star,
     }
@@ -426,6 +436,7 @@ def simulate_oslo_many(
     return {
         "costs": jnp.stack([r["costs"] for r in all_results]),
         "regrets": jnp.stack([r["regrets"] for r in all_results]),
+        "expected_costs": jnp.stack([r["expected_costs"] for r in all_results]),
         "optimal_cost": jnp.stack([r["optimal_cost"] for r in all_results]),
         "k_star": jnp.stack([r["k_star"] for r in all_results]),
     }

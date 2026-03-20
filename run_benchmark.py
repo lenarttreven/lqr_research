@@ -28,7 +28,7 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from simulation import simulate_many, plot_regret
+from simulation import simulate_many, plot_results
 from algorithms.ofu import OFU
 from algorithms.cec import CEC
 from algorithms.cec_pe import CECPE
@@ -58,7 +58,7 @@ def run_on_system(
     """Run all algorithms on a single system, return results dict."""
 
     scan_algos = {
-        "OFU (V^{-1})": OFU(
+        "IR-LQR": OFU(
             lam=lam, beta=0.05, use_invsqrt=False, A0=system.A0, B0=system.B0
         ),
         "Thompson Sampling": TS(lam=lam, beta=0.05, A0=system.A0, B0=system.B0),
@@ -227,9 +227,9 @@ def main():
         os.makedirs(fig_dir, exist_ok=True)
         safe_name = system.name.replace(" ", "_").replace("/", "_")
         save_path = os.path.join(fig_dir, f"regret_{safe_name}.pdf")
-        plot_regret(
+        plot_results(
             results,
-            title=f"Cumulative Regret — {system.name}",
+            title=f"{system.name}",
             log_y=True,
             save_path=save_path,
         )
