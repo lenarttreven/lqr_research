@@ -35,6 +35,7 @@ class OFUState(NamedTuple):
     A0:          Float[Array, "dx dx"]     initial estimate of A
     B0:          Float[Array, "dx du"]     initial estimate of B
     """
+
     K: jax.Array
     V: jax.Array
     V_cur: jax.Array
@@ -76,17 +77,16 @@ class OFU(LQRAlgorithm):
         R: Float[Array, "du du"],
     ) -> OFUState:
         dxu = dx + du
-        H = make_cost_matrix(Q, R)                          # (dxu, dxu)
-        V = self.lam * jnp.eye(dxu, dtype=Q.dtype)          # (dxu, dxu)
-        S = jnp.zeros((dx, dxu), dtype=Q.dtype)             # (dx, dxu)
+        H = make_cost_matrix(Q, R)  # (dxu, dxu)
+        V = self.lam * jnp.eye(dxu, dtype=Q.dtype)  # (dxu, dxu)
+        S = jnp.zeros((dx, dxu), dtype=Q.dtype)  # (dx, dxu)
         A0 = self.A0 if self.A0 is not None else jnp.zeros((dx, dx), dtype=Q.dtype)
         B0 = self.B0 if self.B0 is not None else jnp.zeros((dx, du), dtype=Q.dtype)
 
         # compute initial controller from (A0, B0) with optimistic cost
         V_inv = jnp.eye(dxu, dtype=Q.dtype) / self.lam
         O = sym_invsqrt(V) if self.use_invsqrt else V_inv
-        H_optim = 0.5 * (H - self.beta * O + (H - self.beta * O).T)
-        K, _ = dlqr_joint(A0, B0, H_optim)
+        K, _ = dlqr_joint(A0, B0, H)
 
         return OFUState(
             K=K,
@@ -125,9 +125,9 @@ class OFU(LQRAlgorithm):
         dx = x.shape[0]
 
         # accumulate sufficient statistics
-        xu = jnp.concatenate([x, u], axis=0)      # (dxu,)
-        V_cur = state.V_cur + jnp.outer(xu, xu)    # (dxu, dxu)
-        S = state.S + jnp.outer(x_next, xu)        # (dx, dxu)
+        xu = jnp.concatenate([x, u], axis=0)  # (dxu,)
+        V_cur = state.V_cur + jnp.outer(xu, xu)  # (dxu, dxu)
+        S = state.S + jnp.outer(x_next, xu)  # (dx, dxu)
 
         # determinant-doubling trigger
         logdet_V_cur = logdet(V_cur)
@@ -136,7 +136,9 @@ class OFU(LQRAlgorithm):
         def update_branch(args):
             K, V, logdet_V = args
 
-            A_hat, B_hat = rls_estimate(V_cur, S, dx, state.A0, state.B0, state.lam)  # (dx, dx), (dx, du)
+            A_hat, B_hat = rls_estimate(
+                V_cur, S, dx, state.A0, state.B0, state.lam
+            )  # (dx, dx), (dx, du)
 
             # optimism matrix: V^{-1} or V^{-1/2}
             dxu = V_cur.shape[0]
@@ -147,9 +149,10 @@ class OFU(LQRAlgorithm):
             O_invsqrt = sym_invsqrt(V_cur)  # (dxu, dxu)
             O = jnp.where(state.use_invsqrt, O_invsqrt, O_inv)  # (dxu, dxu)
 
-            H_optim = 0.5 * (state.H - state.beta * O
-                             + (state.H - state.beta * O).T)  # (dxu, dxu)
-            K_new, _ = dlqr_joint(A_hat, B_hat, H_optim)       # (du, dx)
+            H_optim = 0.5 * (
+                state.H - state.beta * O + (state.H - state.beta * O).T
+            )  # (dxu, dxu)
+            K_new, _ = dlqr_joint(A_hat, B_hat, H_optim)  # (du, dx)
             return (K_new, V_cur, logdet_V_cur)
 
         def no_update_branch(args):
