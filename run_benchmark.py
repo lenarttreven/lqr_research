@@ -21,6 +21,7 @@ Usage:
 """
 
 import argparse
+import os
 
 import jax
 
@@ -222,7 +223,16 @@ def main():
             median_regret = jnp.median(jnp.sum(res["regrets"], axis=1))
             print(f"  {name}: median cum. regret = {median_regret:.2f}")
 
-        plot_regret(results, title=f"Cumulative Regret — {system.name}", log_y=True)
+        fig_dir = "figures"
+        os.makedirs(fig_dir, exist_ok=True)
+        safe_name = system.name.replace(" ", "_").replace("/", "_")
+        save_path = os.path.join(fig_dir, f"regret_{safe_name}.pdf")
+        plot_regret(
+            results,
+            title=f"Cumulative Regret — {system.name}",
+            log_y=True,
+            save_path=save_path,
+        )
 
 
 if __name__ == "__main__":

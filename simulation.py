@@ -69,10 +69,10 @@ def simulate(
     )
 
     return {
-        "costs": costs,          # (T,)
-        "regrets": regrets,      # (T,)
+        "costs": costs,  # (T,)
+        "regrets": regrets,  # (T,)
         "optimal_cost": optimal_cost,
-        "k_star": k_star,        # (du, dx)
+        "k_star": k_star,  # (du, dx)
     }
 
 
@@ -102,12 +102,14 @@ def plot_regret(
     results_dict: dict[str, dict],
     title: str = "Cumulative Regret Comparison",
     log_y: bool = False,
+    save_path: str | None = None,
 ) -> None:
     """Plot cumulative regret with 20-80% quantile bands.
 
     Args:
         results_dict: {algo_name: results} where results comes from simulate_many.
         log_y: If True, use logarithmic y-axis.
+        save_path: If provided, save the figure to this path.
     """
     linestyles = ["-", "--", ":", "-."]
 
@@ -128,4 +130,6 @@ def plot_regret(
     plt.title(title)
     plt.grid()
     plt.legend()
+    if save_path is not None:
+        plt.savefig(save_path)
     plt.show()
