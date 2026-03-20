@@ -49,10 +49,16 @@ uv sync --python 3.11
 
 ## Usage
 
+First, activate the virtual environment:
+
+```bash
+source .venv/bin/activate
+```
+
 ### Run the small example experiment
 
 ```bash
-uv run lqr-experiment
+python run_experiment.py
 ```
 
 This runs a small 3-state example and opens a cumulative-regret plot.
@@ -60,7 +66,7 @@ This runs a small 3-state example and opens a cumulative-regret plot.
 ### Run the full benchmark suite
 
 ```bash
-uv run lqr-benchmark
+python run_benchmark.py
 ```
 
 By default this runs all 17 benchmark systems with:
@@ -73,48 +79,41 @@ By default this runs all 17 benchmark systems with:
 Run only the physical systems:
 
 ```bash
-uv run lqr-benchmark --suite physical
+python run_benchmark.py --suite physical
 ```
 
 Run only integrator-chain systems:
 
 ```bash
-uv run lqr-benchmark --suite integrator
+python run_benchmark.py --suite integrator
 ```
 
 Run selected systems by index:
 
 ```bash
-uv run lqr-benchmark --systems 0 3 9
+python run_benchmark.py --systems 0 3 9
 ```
 
 Change the number of trials and steps:
 
 ```bash
-uv run lqr-benchmark --num-trials 50 --num-steps 500
+python run_benchmark.py --num-trials 50 --num-steps 500
 ```
 
 Set the random seed:
 
 ```bash
-uv run lqr-benchmark --seed 42
+python run_benchmark.py --seed 42
 ```
 
 Tune selected algorithm hyperparameters:
 
 ```bash
-uv run lqr-benchmark \
+python run_benchmark.py \
   --lam 0.1 \
   --oslo-mu 0.1 \
   --oslo-beta 1.0 \
   --laglq-delta 0.05
-```
-
-If you prefer to activate the virtual environment manually first:
-
-```bash
-source .venv/bin/activate
-lqr-benchmark
 ```
 
 ## Using the Code as a Library
@@ -158,5 +157,6 @@ results = simulate_many(
 
 ## Notes
 
+- All algorithms except OSLO are fully JIT-compiled with JAX. OSLO requires solving a semidefinite program (SDP) via CVXPY at each step, which makes it considerably slower than the other methods.
+- LAGLQ additionally requires solving several discrete algebraic Riccati equations (DAREs) per controller update, so it is also considerably slower than the remaining JIT-compiled methods.
 - `run_benchmark.py` opens plots with Matplotlib via `plt.show()`, so run it in an environment with a display or configure a non-interactive backend if needed.
-- OSLO uses CVXPY internally and is simulated with a Python loop rather than `jax.lax.scan`.
