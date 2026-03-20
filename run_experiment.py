@@ -8,6 +8,7 @@ import jax.numpy as jnp
 from simulation import simulate_many, plot_regret
 from algorithms.ofu import OFU
 from algorithms.cec_pe import CECPE
+from algorithms.oslo import OSLO, simulate_oslo_many
 
 
 if __name__ == "__main__":
@@ -46,16 +47,38 @@ if __name__ == "__main__":
     x0 = jax.random.uniform(key, shape=(d_x,))
 
     # -- Define algorithms --
-    algos = {
+    scan_algos = {
         "OFU (V^{-1})": OFU(lam=1.0, beta=0.05, use_invsqrt=False, A0=A0, B0=B0),
         "CEC + PE (doubling)": CECPE(lam=1.0, init_act_std=1.0, A0=A0, B0=B0),
     }
+    oslo_algos = {
+        "OSLO": OSLO(mu=0.1, lam=1.0, beta=1.0, sigma=noise_sigma, A0=A0, B0=B0),
+    }
 
-    # -- Run all --
+    # -- Run scan-compatible algorithms --
     results = {}
-    for name, algo in algos.items():
+    for name, algo in scan_algos.items():
         print(f"Running {name}...")
         results[name] = simulate_many(
+            algo,
+            A_star,
+            B_star,
+            Q,
+            R,
+            keys,
+            num_steps,
+            noise_sigma,
+            x0,
+        )
+        print(
+            f"  done. Median final cum. regret: "
+            f"{jnp.median(jnp.sum(results[name]['regrets'], axis=1)):.2f}"
+        )
+
+    # -- Run OSLO (requires Python-loop simulation) --
+    for name, algo in oslo_algos.items():
+        print(f"Running {name}...")
+        results[name] = simulate_oslo_many(
             algo,
             A_star,
             B_star,

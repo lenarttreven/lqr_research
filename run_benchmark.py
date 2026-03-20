@@ -30,7 +30,13 @@ import jax.numpy as jnp
 from simulation import simulate_many, plot_regret
 from algorithms.ofu import OFU
 from algorithms.cec_pe import CECPE
-from systems import get_benchmark_systems, get_physical_systems, get_integrator_systems, LQRSystem
+from algorithms.oslo import OSLO, simulate_oslo_many
+from systems import (
+    get_benchmark_systems,
+    get_physical_systems,
+    get_integrator_systems,
+    LQRSystem,
+)
 
 
 def run_on_system(
@@ -39,20 +45,34 @@ def run_on_system(
     num_steps: int,
     key: jax.Array,
     lam: float = 0.1,
+    oslo_mu: float = 0.1,
+    oslo_beta: float = 1.0,
 ) -> dict[str, dict]:
     """Run all algorithms on a single system, return results dict."""
 
-    algos = {
-        "OFU (V^{-1})": OFU(lam=lam, beta=0.05, use_invsqrt=False,
-                             A0=system.A0, B0=system.B0),
-        "CEC + PE (doubling)": CECPE(lam=lam, init_act_std=1.0,
-                                      A0=system.A0, B0=system.B0),
+    scan_algos = {
+        "OFU (V^{-1})": OFU(
+            lam=lam, beta=0.05, use_invsqrt=False, A0=system.A0, B0=system.B0
+        ),
+        "CEC + PE (doubling)": CECPE(
+            lam=lam, init_act_std=1.0, A0=system.A0, B0=system.B0
+        ),
+    }
+    oslo_algos = {
+        "OSLO": OSLO(
+            mu=oslo_mu,
+            lam=lam,
+            beta=oslo_beta,
+            sigma=system.noise_sigma,
+            A0=system.A0,
+            B0=system.B0,
+        ),
     }
 
     keys = jax.random.split(key, num_trials)
 
     results = {}
-    for name, algo in algos.items():
+    for name, algo in scan_algos.items():
         results[name] = simulate_many(
             algo,
             system.A_star,
@@ -64,6 +84,20 @@ def run_on_system(
             system.noise_sigma,
             system.x0,
         )
+
+    for name, algo in oslo_algos.items():
+        results[name] = simulate_oslo_many(
+            algo,
+            system.A_star,
+            system.B_star,
+            system.Q,
+            system.R,
+            keys,
+            num_steps,
+            system.noise_sigma,
+            system.x0,
+        )
+
     return results
 
 
@@ -73,20 +107,42 @@ def main():
     parser.add_argument("--num-steps", type=int, default=1_000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
-        "--suite", type=str, default="all", choices=["all", "physical", "integrator"],
+        "--suite",
+        type=str,
+        default="all",
+        choices=["all", "physical", "integrator"],
         help="Which system suite to run. Default: all.",
     )
     parser.add_argument(
-        "--systems", type=int, nargs="*", default=None,
+        "--systems",
+        type=int,
+        nargs="*",
+        default=None,
         help="Indices of systems to run. Default: all in the chosen suite.",
     )
     parser.add_argument(
-        "--perturbation", type=float, default=0.01,
+        "--perturbation",
+        type=float,
+        default=0.01,
         help="Magnitude of the initial prior perturbation on A0, B0. Default: 0.01.",
     )
     parser.add_argument(
-        "--lam", type=float, default=0.1,
+        "--lam",
+        type=float,
+        default=0.1,
         help="Regularization parameter lambda for RLS. Default: 0.1.",
+    )
+    parser.add_argument(
+        "--oslo-mu",
+        type=float,
+        default=0.1,
+        help="OSLO optimism parameter mu. Default: 0.1.",
+    )
+    parser.add_argument(
+        "--oslo-beta",
+        type=float,
+        default=1.0,
+        help="OSLO scaling parameter beta. Default: 1.0.",
     )
     args = parser.parse_args()
 
@@ -110,7 +166,15 @@ def main():
         print(f"{'='*60}")
 
         key, run_key = jax.random.split(key)
-        results = run_on_system(system, args.num_trials, args.num_steps, run_key, lam=args.lam)
+        results = run_on_system(
+            system,
+            args.num_trials,
+            args.num_steps,
+            run_key,
+            lam=args.lam,
+            oslo_mu=args.oslo_mu,
+            oslo_beta=args.oslo_beta,
+        )
 
         # optimal cost is the same across algorithms
         first_res = next(iter(results.values()))

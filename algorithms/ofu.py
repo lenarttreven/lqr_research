@@ -81,7 +81,13 @@ class OFU(LQRAlgorithm):
         S = jnp.zeros((dx, dxu), dtype=Q.dtype)             # (dx, dxu)
         A0 = self.A0 if self.A0 is not None else jnp.zeros((dx, dx), dtype=Q.dtype)
         B0 = self.B0 if self.B0 is not None else jnp.zeros((dx, du), dtype=Q.dtype)
-        K = jnp.ones((du, dx), dtype=Q.dtype) * 0.01        # (du, dx)
+
+        # compute initial controller from (A0, B0) with optimistic cost
+        V_inv = jnp.eye(dxu, dtype=Q.dtype) / self.lam
+        O = sym_invsqrt(V) if self.use_invsqrt else V_inv
+        H_optim = 0.5 * (H - self.beta * O + (H - self.beta * O).T)
+        K, _ = dlqr_joint(A0, B0, H_optim)
+
         return OFUState(
             K=K,
             V=V,
