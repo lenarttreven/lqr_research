@@ -72,6 +72,7 @@ def run_on_system(
             max_dual_iters=laglq_max_dual_iters,
             A0=system.A0,
             B0=system.B0,
+            penalty_aux=1e2,
         ),
     }
     oslo_algos = {
