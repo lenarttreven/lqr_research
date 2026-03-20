@@ -21,9 +21,9 @@ class LQRAlgorithm(abc.ABC):
         dxu = dx + du
     """
 
-    @staticmethod
     @abc.abstractmethod
     def init_state(
+        self,
         dx: int,
         du: int,
         Q: Float[Array, "dx dx"],
