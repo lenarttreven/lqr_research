@@ -1,6 +1,8 @@
 """Run LQR learning experiments and compare algorithms."""
 
 import jax
+
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 from simulation import simulate_many, plot_regret

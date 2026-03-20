@@ -101,11 +101,13 @@ def simulate_many(
 def plot_regret(
     results_dict: dict[str, dict],
     title: str = "Cumulative Regret Comparison",
+    log_y: bool = False,
 ) -> None:
     """Plot cumulative regret with 20-80% quantile bands.
 
     Args:
         results_dict: {algo_name: results} where results comes from simulate_many.
+        log_y: If True, use logarithmic y-axis.
     """
     linestyles = ["-", "--", ":", "-."]
 
@@ -119,6 +121,8 @@ def plot_regret(
         plt.plot(t, q50, label=name, linestyle=ls)
         plt.fill_between(t, q20, q80, alpha=0.15)
 
+    if log_y:
+        plt.yscale("log")
     plt.xlabel("Time step")
     plt.ylabel("Cumulative Regret")
     plt.title(title)
