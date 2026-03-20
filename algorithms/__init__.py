@@ -3,3 +3,4 @@ from algorithms.cec import CEC
 from algorithms.ofu import OFU
 from algorithms.cec_pe import CECPE
 from algorithms.laglq import LAGLQ
+from algorithms.thompson_sampling import TS

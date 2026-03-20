@@ -1,7 +1,6 @@
-"""Optimism in the Face of Uncertainty (OFU) for LQR.
+"""Thompson sampling for LQR.
 
-Uses RLS estimation with determinant-doubling trigger and an optimistic
-cost matrix: H_optim = H - beta * V^{-1} (or V^{-1/2}).
+Uses RLS estimation with determinant-doubling trigger.
 """
 
 from typing import NamedTuple
@@ -20,8 +19,8 @@ from lqr_utils import (
 )
 
 
-class OFUState(NamedTuple):
-    """Algorithm state for OFU-LQR.
+class TSState(NamedTuple):
+    """Algorithm state for Thompson sampling-LQR.
 
     K:           Float[Array, "du dx"]     current controller gain
     V:           Float[Array, "dxu dxu"]   committed RLS design matrix
@@ -34,6 +33,7 @@ class OFUState(NamedTuple):
     use_invsqrt: bool                      if True, use V^{-1/2} instead of V^{-1}
     A0:          Float[Array, "dx dx"]     initial estimate of A
     B0:          Float[Array, "dx du"]     initial estimate of B
+    sample_key:  jax.Array                 PRNG key cached from get_action
     """
 
     K: jax.Array
@@ -47,10 +47,11 @@ class OFUState(NamedTuple):
     use_invsqrt: jax.Array
     A0: jax.Array
     B0: jax.Array
+    sample_key: jax.Array
 
 
-class OFU(LQRAlgorithm):
-    """OFU-LQR with determinant-doubling trigger.
+class TS(LQRAlgorithm):
+    """Thompson sampling-LQR with determinant-doubling trigger.
 
     Constructor args stored as class attributes, used by init_state.
     """
@@ -75,7 +76,7 @@ class OFU(LQRAlgorithm):
         du: int,
         Q: Float[Array, "dx dx"],
         R: Float[Array, "du du"],
-    ) -> OFUState:
+    ) -> TSState:
         dxu = dx + du
         H = make_cost_matrix(Q, R)  # (dxu, dxu)
         V = self.lam * jnp.eye(dxu, dtype=Q.dtype)  # (dxu, dxu)
@@ -86,7 +87,7 @@ class OFU(LQRAlgorithm):
         # compute initial controller from (A0, B0)
         K, _ = dlqr_joint(A0, B0, H)
 
-        return OFUState(
+        return TSState(
             K=K,
             V=V,
             V_cur=V,
@@ -98,27 +99,28 @@ class OFU(LQRAlgorithm):
             use_invsqrt=jnp.array(self.use_invsqrt),
             A0=A0,
             B0=B0,
+            sample_key=jax.random.PRNGKey(0),
         )
 
     @staticmethod
     def get_action(
         x: Float[Array, "dx"],
-        state: OFUState,
+        state: TSState,
         key: jax.Array,
-    ) -> tuple[Float[Array, "du"], OFUState]:
-        """Deterministic action u = K @ x (no exploration noise in OFU)."""
+    ) -> tuple[Float[Array, "du"], TSState]:
+        """Deterministic action u = K @ x (no exploration noise)."""
         du = state.K.shape[0]
         u = (state.K @ x).reshape((du,))  # (du,)
-        return u, state
+        return u, state._replace(sample_key=key)
 
     @staticmethod
     def update(
         x: Float[Array, "dx"],
         u: Float[Array, "du"],
         x_next: Float[Array, "dx"],
-        state: OFUState,
+        state: TSState,
         t: int,
-    ) -> OFUState:
+    ) -> TSState:
         """Accumulate RLS stats; recompute controller when det doubles."""
         dx = x.shape[0]
 
@@ -137,20 +139,18 @@ class OFU(LQRAlgorithm):
             A_hat, B_hat = rls_estimate(
                 V_cur, S, dx, state.A0, state.B0, state.lam
             )  # (dx, dx), (dx, du)
+            AB_hat = jnp.concatenate([A_hat, B_hat], axis=1)  # (dx, dxu)
+            V_invsqrt = sym_invsqrt(V_cur)  # (dxu, dxu)
+            eta = jax.random.normal(
+                jax.random.fold_in(state.sample_key, t),
+                shape=AB_hat.shape,
+                dtype=AB_hat.dtype,
+            )  # (dx, dxu)
+            AB_ts = AB_hat + state.beta * (eta @ V_invsqrt)  # (dx, dxu)
+            A_ts = AB_ts[:, :dx]  # (dx, dx)
+            B_ts = AB_ts[:, dx:]  # (dx, du)
 
-            # optimism matrix: V^{-1} or V^{-1/2}
-            dxu = V_cur.shape[0]
-            O_inv = jax.scipy.linalg.solve(
-                V_cur, jnp.eye(dxu, dtype=V_cur.dtype), assume_a="sym"
-            )  # (dxu, dxu)
-            O_inv = 0.5 * (O_inv + O_inv.T)
-            O_invsqrt = sym_invsqrt(V_cur)  # (dxu, dxu)
-            O = jnp.where(state.use_invsqrt, O_invsqrt, O_inv)  # (dxu, dxu)
-
-            H_optim = 0.5 * (
-                state.H - state.beta * O + (state.H - state.beta * O).T
-            )  # (dxu, dxu)
-            K_new, _ = dlqr_joint(A_hat, B_hat, H_optim)  # (du, dx)
+            K_new, _ = dlqr_joint(A_ts, B_ts, state.H)  # (du, dx)
             return (K_new, V_cur, logdet_V_cur)
 
         def no_update_branch(args):

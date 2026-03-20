@@ -11,6 +11,7 @@ from algorithms.cec import CEC
 from algorithms.cec_pe import CECPE
 from algorithms.laglq import LAGLQ
 from algorithms.oslo import OSLO, simulate_oslo_many
+from algorithms.thompson_sampling import TS
 
 
 if __name__ == "__main__":
@@ -51,6 +52,7 @@ if __name__ == "__main__":
     # -- Define algorithms --
     scan_algos = {
         "OFU (V^{-1})": OFU(lam=1.0, beta=0.05, use_invsqrt=False, A0=A0, B0=B0),
+        "Thompson Sampling": TS(lam=1.0, beta=0.05, A0=A0, B0=B0),
         "CEC (doubling)": CEC(lam=1.0, A0=A0, B0=B0),
         "CEC + PE (doubling)": CECPE(lam=1.0, init_act_std=1.0, A0=A0, B0=B0),
         "LAGLQ": LAGLQ(

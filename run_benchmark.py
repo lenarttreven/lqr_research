@@ -33,6 +33,7 @@ from algorithms.cec import CEC
 from algorithms.cec_pe import CECPE
 from algorithms.laglq import LAGLQ
 from algorithms.oslo import OSLO, simulate_oslo_many
+from algorithms.thompson_sampling import TS
 from systems import (
     get_benchmark_systems,
     get_physical_systems,
@@ -60,6 +61,7 @@ def run_on_system(
         "OFU (V^{-1})": OFU(
             lam=lam, beta=0.05, use_invsqrt=False, A0=system.A0, B0=system.B0
         ),
+        "Thompson Sampling": TS(lam=lam, beta=0.05, A0=system.A0, B0=system.B0),
         "CEC (doubling)": CEC(lam=lam, A0=system.A0, B0=system.B0),
         "CEC + PE (doubling)": CECPE(
             lam=lam, init_act_std=1.0, A0=system.A0, B0=system.B0
