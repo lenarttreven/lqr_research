@@ -30,6 +30,7 @@ import jax.numpy as jnp
 from simulation import simulate_many, plot_regret
 from algorithms.ofu import OFU
 from algorithms.cec_pe import CECPE
+from algorithms.laglq import LAGLQ
 from algorithms.oslo import OSLO, simulate_oslo_many
 from systems import (
     get_benchmark_systems,
@@ -47,6 +48,10 @@ def run_on_system(
     lam: float = 0.1,
     oslo_mu: float = 0.1,
     oslo_beta: float = 1.0,
+    laglq_delta: float = 0.05,
+    laglq_eps_scale: float = 1.0,
+    laglq_prior_radius: float = 0.05,
+    laglq_max_dual_iters: int = 50,
 ) -> dict[str, dict]:
     """Run all algorithms on a single system, return results dict."""
 
@@ -56,6 +61,17 @@ def run_on_system(
         ),
         "CEC + PE (doubling)": CECPE(
             lam=lam, init_act_std=1.0, A0=system.A0, B0=system.B0
+        ),
+        "LAGLQ": LAGLQ(
+            lam=lam,
+            horizon=num_steps,
+            delta=laglq_delta,
+            noise_sigma=system.noise_sigma,
+            prior_radius=laglq_prior_radius,
+            eps_scale=laglq_eps_scale,
+            max_dual_iters=laglq_max_dual_iters,
+            A0=system.A0,
+            B0=system.B0,
         ),
     }
     oslo_algos = {
@@ -144,6 +160,30 @@ def main():
         default=1.0,
         help="OSLO scaling parameter beta. Default: 1.0.",
     )
+    parser.add_argument(
+        "--laglq-delta",
+        type=float,
+        default=0.05,
+        help="LAGLQ confidence level delta. Default: 0.05.",
+    )
+    parser.add_argument(
+        "--laglq-eps-scale",
+        type=float,
+        default=1.0,
+        help="LAGLQ accuracy schedule scale. Default: 1.0.",
+    )
+    parser.add_argument(
+        "--laglq-prior-radius",
+        type=float,
+        default=None,
+        help="LAGLQ prior radius used in beta_t. Default: reuse --perturbation.",
+    )
+    parser.add_argument(
+        "--laglq-max-dual-iters",
+        type=int,
+        default=50,
+        help="Maximum dual-search iterations for LAGLQ. Default: 50.",
+    )
     args = parser.parse_args()
 
     key = jax.random.PRNGKey(args.seed)
@@ -174,6 +214,14 @@ def main():
             lam=args.lam,
             oslo_mu=args.oslo_mu,
             oslo_beta=args.oslo_beta,
+            laglq_delta=args.laglq_delta,
+            laglq_eps_scale=args.laglq_eps_scale,
+            laglq_prior_radius=(
+                args.laglq_prior_radius
+                if args.laglq_prior_radius is not None
+                else args.perturbation
+            ),
+            laglq_max_dual_iters=args.laglq_max_dual_iters,
         )
 
         # optimal cost is the same across algorithms

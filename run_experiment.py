@@ -8,6 +8,7 @@ import jax.numpy as jnp
 from simulation import simulate_many, plot_regret
 from algorithms.ofu import OFU
 from algorithms.cec_pe import CECPE
+from algorithms.laglq import LAGLQ
 from algorithms.oslo import OSLO, simulate_oslo_many
 
 
@@ -39,8 +40,8 @@ if __name__ == "__main__":
     Q = jnp.diag(jnp.array([10.0, 1.0, 0.1]))
     R = jnp.array([[0.1]])
 
-    num_trials = 100
-    num_steps = 1_000
+    num_trials = 5
+    num_steps = 100
     noise_sigma = 0.1
 
     keys = jax.random.split(key, num_trials)
@@ -50,6 +51,17 @@ if __name__ == "__main__":
     scan_algos = {
         "OFU (V^{-1})": OFU(lam=1.0, beta=0.05, use_invsqrt=False, A0=A0, B0=B0),
         "CEC + PE (doubling)": CECPE(lam=1.0, init_act_std=1.0, A0=A0, B0=B0),
+        "LAGLQ": LAGLQ(
+            lam=1.0,
+            horizon=num_steps,
+            delta=0.05,
+            noise_sigma=noise_sigma,
+            prior_radius=0.05,
+            eps_scale=1.0,
+            max_dual_iters=30,
+            A0=A0,
+            B0=B0,
+        ),
     }
     oslo_algos = {
         "OSLO": OSLO(mu=0.1, lam=1.0, beta=1.0, sigma=noise_sigma, A0=A0, B0=B0),
