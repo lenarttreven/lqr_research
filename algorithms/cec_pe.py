@@ -24,6 +24,9 @@ class CECPEState(NamedTuple):
     H:           Float[Array, "dxu dxu"]   joint cost matrix (cached)
     next_update: int                        next time step to trigger update
     act_std:     Float[Array, ""]          current exploration noise std
+    A0:          Float[Array, "dx dx"]     initial estimate of A
+    B0:          Float[Array, "dx du"]     initial estimate of B
+    lam:         Float[Array, ""]          RLS regularization
     """
     K: jax.Array
     V: jax.Array
@@ -32,6 +35,9 @@ class CECPEState(NamedTuple):
     H: jax.Array
     next_update: jax.Array
     act_std: jax.Array
+    A0: jax.Array
+    B0: jax.Array
+    lam: jax.Array
 
 
 class CECPE(LQRAlgorithm):
@@ -42,9 +48,17 @@ class CECPE(LQRAlgorithm):
         init_act_std: initial exploration noise standard deviation.
     """
 
-    def __init__(self, lam: float = 1.0, init_act_std: float = 1.0):
+    def __init__(
+        self,
+        lam: float = 1.0,
+        init_act_std: float = 1.0,
+        A0: Float[Array, "dx dx"] | None = None,
+        B0: Float[Array, "dx du"] | None = None,
+    ):
         self.lam = lam
         self.init_act_std = init_act_std
+        self.A0 = A0
+        self.B0 = B0
 
     def init_state(
         self,
@@ -57,6 +71,8 @@ class CECPE(LQRAlgorithm):
         H = make_cost_matrix(Q, R)                          # (dxu, dxu)
         V = self.lam * jnp.eye(dxu, dtype=Q.dtype)          # (dxu, dxu)
         S = jnp.zeros((dx, dxu), dtype=Q.dtype)             # (dx, dxu)
+        A0 = self.A0 if self.A0 is not None else jnp.zeros((dx, dx), dtype=Q.dtype)
+        B0 = self.B0 if self.B0 is not None else jnp.zeros((dx, du), dtype=Q.dtype)
         K = jnp.ones((du, dx), dtype=Q.dtype) * 0.01        # (du, dx)
         return CECPEState(
             K=K,
@@ -66,6 +82,9 @@ class CECPE(LQRAlgorithm):
             H=H,
             next_update=jnp.array(1, dtype=jnp.int32),
             act_std=jnp.array(self.init_act_std, dtype=Q.dtype),
+            A0=A0,
+            B0=B0,
+            lam=jnp.array(self.lam, dtype=Q.dtype),
         )
 
     @staticmethod
@@ -104,7 +123,7 @@ class CECPE(LQRAlgorithm):
         def update_branch(args):
             K, V, next_update, act_std = args
 
-            A_hat, B_hat = rls_estimate(V_cur, S, dx)  # (dx, dx), (dx, du)
+            A_hat, B_hat = rls_estimate(V_cur, S, dx, state.A0, state.B0, state.lam)  # (dx, dx), (dx, du)
             K_new, _ = dlqr_joint(A_hat, B_hat, state.H)  # (du, dx)
 
             next_update_new = next_update * 2

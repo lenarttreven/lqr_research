@@ -23,15 +23,17 @@ from lqr_utils import (
 class OFUState(NamedTuple):
     """Algorithm state for OFU-LQR.
 
-    K:        Float[Array, "du dx"]     current controller gain
-    V:        Float[Array, "dxu dxu"]   committed RLS design matrix
-    V_cur:    Float[Array, "dxu dxu"]   running RLS design matrix
-    S:        Float[Array, "dx dxu"]    RLS cross-correlation
-    logdet_V: Float[Array, ""]          log-det of committed V
-    H:        Float[Array, "dxu dxu"]   joint cost matrix (cached)
-    beta:     Float[Array, ""]          optimism bonus scale
-    lam:      Float[Array, ""]          regularization
-    use_invsqrt: bool                   if True, use V^{-1/2} instead of V^{-1}
+    K:           Float[Array, "du dx"]     current controller gain
+    V:           Float[Array, "dxu dxu"]   committed RLS design matrix
+    V_cur:       Float[Array, "dxu dxu"]   running RLS design matrix
+    S:           Float[Array, "dx dxu"]    RLS cross-correlation
+    logdet_V:    Float[Array, ""]          log-det of committed V
+    H:           Float[Array, "dxu dxu"]   joint cost matrix (cached)
+    beta:        Float[Array, ""]          optimism bonus scale
+    lam:         Float[Array, ""]          regularization
+    use_invsqrt: bool                      if True, use V^{-1/2} instead of V^{-1}
+    A0:          Float[Array, "dx dx"]     initial estimate of A
+    B0:          Float[Array, "dx du"]     initial estimate of B
     """
     K: jax.Array
     V: jax.Array
@@ -42,6 +44,8 @@ class OFUState(NamedTuple):
     beta: jax.Array
     lam: jax.Array
     use_invsqrt: jax.Array
+    A0: jax.Array
+    B0: jax.Array
 
 
 class OFU(LQRAlgorithm):
@@ -55,10 +59,14 @@ class OFU(LQRAlgorithm):
         lam: float = 1.0,
         beta: float = 0.05,
         use_invsqrt: bool = False,
+        A0: Float[Array, "dx dx"] | None = None,
+        B0: Float[Array, "dx du"] | None = None,
     ):
         self.lam = lam
         self.beta = beta
         self.use_invsqrt = use_invsqrt
+        self.A0 = A0
+        self.B0 = B0
 
     def init_state(
         self,
@@ -71,6 +79,8 @@ class OFU(LQRAlgorithm):
         H = make_cost_matrix(Q, R)                          # (dxu, dxu)
         V = self.lam * jnp.eye(dxu, dtype=Q.dtype)          # (dxu, dxu)
         S = jnp.zeros((dx, dxu), dtype=Q.dtype)             # (dx, dxu)
+        A0 = self.A0 if self.A0 is not None else jnp.zeros((dx, dx), dtype=Q.dtype)
+        B0 = self.B0 if self.B0 is not None else jnp.zeros((dx, du), dtype=Q.dtype)
         K = jnp.ones((du, dx), dtype=Q.dtype) * 0.01        # (du, dx)
         return OFUState(
             K=K,
@@ -82,6 +92,8 @@ class OFU(LQRAlgorithm):
             beta=jnp.array(self.beta, dtype=Q.dtype),
             lam=jnp.array(self.lam, dtype=Q.dtype),
             use_invsqrt=jnp.array(self.use_invsqrt),
+            A0=A0,
+            B0=B0,
         )
 
     @staticmethod
@@ -118,7 +130,7 @@ class OFU(LQRAlgorithm):
         def update_branch(args):
             K, V, logdet_V = args
 
-            A_hat, B_hat = rls_estimate(V_cur, S, dx)  # (dx, dx), (dx, du)
+            A_hat, B_hat = rls_estimate(V_cur, S, dx, state.A0, state.B0, state.lam)  # (dx, dx), (dx, du)
 
             # optimism matrix: V^{-1} or V^{-1/2}
             dxu = V_cur.shape[0]

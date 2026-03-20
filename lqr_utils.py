@@ -120,13 +120,23 @@ def rls_estimate(
     V: Float[Array, "dxu dxu"],
     S: Float[Array, "dx dxu"],
     dx: int,
+    A0: Float[Array, "dx dx"] | None = None,
+    B0: Float[Array, "dx du"] | None = None,
+    lam: float = 1.0,
 ) -> tuple[Float[Array, "dx dx"], Float[Array, "dx du"]]:
-    """Compute (A_hat, B_hat) from RLS sufficient statistics V and S.
+    """Compute (A_hat, B_hat) from RLS sufficient statistics V and S,
+    centered around initial estimates (A0, B0) with regularization lam.
 
-    AB_hat = S @ V^{-1}, solved as (V^T \\ S^T)^T.
+    AB_hat = (lam * AB0 + S) @ V^{-1}.
     """
-    Vinv_S_T = jax.scipy.linalg.solve(V.T, S.T, assume_a="sym")  # (dxu, dx)
-    AB_hat = Vinv_S_T.T  # (dx, dxu)
+    du = V.shape[0] - dx
+    if A0 is None:
+        A0 = jnp.zeros((dx, dx), dtype=V.dtype)  # (dx, dx)
+    if B0 is None:
+        B0 = jnp.zeros((dx, du), dtype=V.dtype)  # (dx, du)
+    AB0 = jnp.concatenate([A0, B0], axis=1)  # (dx, dxu)
+    RHS = lam * AB0 + S  # (dx, dxu)
+    AB_hat = jax.scipy.linalg.solve(V.T, RHS.T, assume_a="sym").T  # (dx, dxu)
     A_hat = AB_hat[:, :dx]  # (dx, dx)
     B_hat = AB_hat[:, dx:]  # (dx, du)
     return A_hat, B_hat

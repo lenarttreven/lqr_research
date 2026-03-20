@@ -13,20 +13,26 @@ if __name__ == "__main__":
     d_x, d_u = 3, 1
     dt = 0.1
 
-    A = jnp.array(
+    A_star = jnp.array(
         [
             [1.0, dt, 0.5 * dt**2],
             [0.0, 1.0, dt],
             [0.0, 0.0, 1.0],
         ]
     )
-    B = jnp.array(
+    B_star = jnp.array(
         [
             [dt**3 / 6],
             [dt**2 / 2],
             [dt],
         ]
     )
+
+    # Initial estimates: true system + small perturbation
+    key, key_a, key_b = jax.random.split(key, 3)
+    A0 = A_star + 0.05 * jax.random.normal(key_a, shape=A_star.shape)
+    B0 = B_star + 0.05 * jax.random.normal(key_b, shape=B_star.shape)
+
     Q = jnp.diag(jnp.array([10.0, 1.0, 0.1]))
     R = jnp.array([[0.1]])
 
@@ -39,8 +45,8 @@ if __name__ == "__main__":
 
     # -- Define algorithms --
     algos = {
-        "OFU (V^{-1})": OFU(lam=1.0, beta=0.05, use_invsqrt=False),
-        "CEC + PE (doubling)": CECPE(lam=1.0, init_act_std=1.0),
+        "OFU (V^{-1})": OFU(lam=1.0, beta=0.05, use_invsqrt=False, A0=A0, B0=B0),
+        "CEC + PE (doubling)": CECPE(lam=1.0, init_act_std=1.0, A0=A0, B0=B0),
     }
 
     # -- Run all --
@@ -49,8 +55,8 @@ if __name__ == "__main__":
         print(f"Running {name}...")
         results[name] = simulate_many(
             algo,
-            A,
-            B,
+            A_star,
+            B_star,
             Q,
             R,
             keys,
