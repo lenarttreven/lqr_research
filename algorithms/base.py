@@ -35,9 +35,9 @@ class LQRAlgorithm(abc.ABC):
         """
         ...
 
-    @staticmethod
     @abc.abstractmethod
     def get_action(
+        self,
         x: Float[Array, "dx"],       # current state
         state: AlgoState,             # algorithm state
         key: jax.Array,               # PRNG key for exploration
@@ -49,9 +49,9 @@ class LQRAlgorithm(abc.ABC):
         """
         ...
 
-    @staticmethod
     @abc.abstractmethod
     def update(
+        self,
         x: Float[Array, "dx"],        # state before transition
         u: Float[Array, "du"],         # action taken
         x_next: Float[Array, "dx"],    # state after transition

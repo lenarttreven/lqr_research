@@ -54,11 +54,13 @@ class CECPE(LQRAlgorithm):
         init_act_std: float = 1.0,
         A0: Float[Array, "dx dx"] | None = None,
         B0: Float[Array, "dx du"] | None = None,
+        solver: str = "sda",
     ):
         self.lam = lam
         self.init_act_std = init_act_std
         self.A0 = A0
         self.B0 = B0
+        self.solver = solver
 
     def init_state(
         self,
@@ -75,7 +77,7 @@ class CECPE(LQRAlgorithm):
         B0 = self.B0 if self.B0 is not None else jnp.zeros((dx, du), dtype=Q.dtype)
 
         # compute initial controller from (A0, B0)
-        K, _ = dlqr_joint(A0, B0, H)
+        K, _ = dlqr_joint(A0, B0, H, solver=self.solver)
 
         return CECPEState(
             K=K,
@@ -90,8 +92,8 @@ class CECPE(LQRAlgorithm):
             lam=jnp.array(self.lam, dtype=Q.dtype),
         )
 
-    @staticmethod
     def get_action(
+        self,
         x: Float[Array, "dx"],
         state: CECPEState,
         key: jax.Array,
@@ -104,8 +106,8 @@ class CECPE(LQRAlgorithm):
         u = (state.K @ x).reshape((du,)) + eta  # (du,)
         return u, state
 
-    @staticmethod
     def update(
+        self,
         x: Float[Array, "dx"],
         u: Float[Array, "du"],
         x_next: Float[Array, "dx"],
@@ -127,7 +129,7 @@ class CECPE(LQRAlgorithm):
             K, V, next_update, act_std = args
 
             A_hat, B_hat = rls_estimate(V_cur, S, dx, state.A0, state.B0, state.lam)  # (dx, dx), (dx, du)
-            K_new, _ = dlqr_joint(A_hat, B_hat, state.H)  # (du, dx)
+            K_new, _ = dlqr_joint(A_hat, B_hat, state.H, solver=self.solver)  # (du, dx)
 
             next_update_new = next_update * 2
             act_std_new = 1.0 / jnp.sqrt(t.astype(x.dtype) + 1.0)

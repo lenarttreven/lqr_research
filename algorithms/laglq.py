@@ -101,6 +101,7 @@ class LAGLQ(LQRAlgorithm):
         penalty_aux=1.0,
         A0=None,
         B0=None,
+        solver: str = "sda",
     ):
         self.lam = lam
         self.beta = beta
@@ -112,14 +113,15 @@ class LAGLQ(LQRAlgorithm):
         self.penalty_aux = penalty_aux
         self.A0 = A0
         self.B0 = B0
+        self.solver = solver
 
     @staticmethod
-    def _dual_eval(A, B, Q, R, V, beta, mu, stability_tol, penalty_aux=1.0):
+    def _dual_eval(A, B, Q, R, V, beta, mu, stability_tol, penalty_aux=1.0, solver="sda"):
         dx = A.shape[0]
         B_tilde = jnp.concatenate([B, jnp.eye(dx)], axis=1)
 
         H_mu, C_g = _lagrangian_cost_matrix(Q, R, V, beta, mu, penalty_aux)
-        K_ext, _ = dlqr_joint(A, B_tilde, H_mu)
+        K_ext, _ = dlqr_joint(A, B_tilde, H_mu, solver=solver)
 
         A_cl = A + B_tilde @ K_ext
 
@@ -135,9 +137,9 @@ class LAGLQ(LQRAlgorithm):
         return _DualEval(K_ext, grad, valid)
 
     @staticmethod
-    def _solve_policy(A, B, Q, R, V, beta, eps, prev, mu_max, iters, stability_tol, penalty_aux=1.0):
+    def _solve_policy(A, B, Q, R, V, beta, eps, prev, mu_max, iters, stability_tol, penalty_aux=1.0, solver="sda"):
 
-        sol0 = LAGLQ._dual_eval(A, B, Q, R, V, beta, 0.0, stability_tol, penalty_aux)
+        sol0 = LAGLQ._dual_eval(A, B, Q, R, V, beta, 0.0, stability_tol, penalty_aux, solver=solver)
 
         # Bisection state: (i, mu_l, mu_r, K_r)
         init_state = (
@@ -150,7 +152,7 @@ class LAGLQ(LQRAlgorithm):
         def body_fn(carry):
             i, mu_l, mu_r, K_r = carry
             mu = 0.5 * (mu_l + mu_r)
-            sol = LAGLQ._dual_eval(A, B, Q, R, V, beta, mu, stability_tol, penalty_aux)
+            sol = LAGLQ._dual_eval(A, B, Q, R, V, beta, mu, stability_tol, penalty_aux, solver=solver)
 
             # If invalid: shrink upper bound
             # If valid and grad > 0: raise lower bound
@@ -196,6 +198,7 @@ class LAGLQ(LQRAlgorithm):
             self.max_dual_iters,
             self.stability_tol,
             self.penalty_aux,
+            solver=self.solver,
         )
 
         return LAGLQState(
@@ -253,6 +256,7 @@ class LAGLQ(LQRAlgorithm):
                 state.max_dual_iters,
                 state.stability_tol,
                 state.penalty_aux,
+                solver=self.solver,
             )
 
             return state._replace(

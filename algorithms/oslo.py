@@ -140,6 +140,7 @@ class OSLO(LQRAlgorithm):
         sigma: float = 0.1,
         A0: Float[Array, "dx dx"] | None = None,
         B0: Float[Array, "dx du"] | None = None,
+        solver: str = "sda",
     ):
         self.mu = mu
         self.lam = lam
@@ -147,6 +148,7 @@ class OSLO(LQRAlgorithm):
         self.sigma = sigma
         self.A0 = A0
         self.B0 = B0
+        self.solver = solver
 
     def init_state(
         self,
@@ -163,7 +165,7 @@ class OSLO(LQRAlgorithm):
         B0 = self.B0 if self.B0 is not None else jnp.zeros((dx, du), dtype=Q.dtype)
 
         # compute initial controller from (A0, B0)
-        K, _ = dlqr_joint(A0, B0, H)
+        K, _ = dlqr_joint(A0, B0, H, solver=self.solver)
         return OSLOState(
             K=K,
             V=V,
@@ -182,8 +184,8 @@ class OSLO(LQRAlgorithm):
             B_hat=B0,
         )
 
-    @staticmethod
     def get_action(
+        self,
         x: Float[Array, "dx"],
         state: OSLOState,
         key: jax.Array,
@@ -268,8 +270,8 @@ class OSLO(LQRAlgorithm):
 
         return jnp.array(K_np)
 
-    @staticmethod
     def update(
+        self,
         x: Float[Array, "dx"],
         u: Float[Array, "du"],
         x_next: Float[Array, "dx"],
@@ -340,6 +342,7 @@ def simulate_oslo(
     num_steps: int,
     noise_sigma: float,
     x0: Float[Array, "dx"] | None = None,
+    solver: str = "sda",
 ) -> dict:
     """Run OSLO on a single trajectory using a Python for-loop.
 
@@ -352,7 +355,7 @@ def simulate_oslo(
         x0 = jnp.zeros((dx,), dtype=A.dtype)
 
     H = make_cost_matrix(Q, R)
-    k_star, _ = dlqr_joint(A, B, H)
+    k_star, _ = dlqr_joint(A, B, H, solver=solver)
     optimal_cost = lqr_avg_stage_cost(A, B, Q, R, k_star, noise_sigma)
 
     algo_state = algo.init_state(dx, du, Q, R)

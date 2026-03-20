@@ -16,6 +16,7 @@ def steady_state_covariance(
     tol: float = 1e-12,
 ) -> Float[Array, "dx dx"]:
     """Compute steady-state covariance Sigma = Acl @ Sigma @ Acl.T + W via iteration."""
+
     def cond_fun(state):
         i, Sigma, Sigma_next = state
         err = jnp.max(jnp.abs(Sigma_next - Sigma))
@@ -50,18 +51,98 @@ def lqr_avg_stage_cost(
     return jnp.trace((Q + K.T @ R @ K) @ Sigma)
 
 
+def _symmetrize(M: jax.Array) -> jax.Array:
+    return 0.5 * (M + M.T)
+
+
+def _right_solve(X: jax.Array, M: jax.Array) -> jax.Array:
+    """Return X @ M^{-1} without forming the inverse."""
+    return jnp.linalg.solve(M.T, X.T).T
+
+
 @jax.jit
-def dlqr_joint(
+def _dlqr_sda(
+    A: Float[Array, "dx dx"],
+    B: Float[Array, "dx du"],
+    H: Float[Array, "dxu dxu"],
+    max_iters: int = 100,
+    tol: float = 1e-8,
+) -> tuple[Float[Array, "du dx"], Float[Array, "dx dx"]]:
+    """Solve discrete LQR via SDA from joint cost matrix H = [[Q, S], [S^T, R]]."""
+    n = A.shape[0]
+
+    # Extract Q, S, R from joint cost matrix
+    Q = _symmetrize(H[:n, :n])
+    S = H[:n, n:]
+    R = _symmetrize(H[n:, n:])
+
+    # Complete the square:
+    #   x^T Q x + 2 x^T S u + u^T R u
+    # = x^T (Q - S R^{-1} S^T) x + (u + R^{-1} S^T x)^T R (u + R^{-1} S^T x)
+    #
+    # So we solve a standard DARE for:
+    #   Abar = A - B R^{-1} S^T
+    #   Qbar = Q - S R^{-1} S^T
+    RtS = jax.scipy.linalg.solve(R, S.T, assume_a="sym")  # (du, dx)
+    Abar = A - B @ RtS
+    Qbar = _symmetrize(Q - S @ RtS)
+
+    # SDA initialization for standard DARE:
+    #   P = Qbar + Abar^T P Abar - Abar^T P B (R + B^T P B)^{-1} B^T P Abar
+    #
+    # Using matrices:
+    #   A0 = Abar
+    #   G0 = B R^{-1} B^T
+    #   H0 = Qbar
+    RinvBT = jax.scipy.linalg.solve(R, B.T, assume_a="sym")  # (du, dx)
+    Ak0 = Abar
+    Gk0 = _symmetrize(B @ RinvBT)  # (dx, dx)
+    Hk0 = Qbar
+    I = jnp.eye(n, dtype=A.dtype)
+
+    def cond_fun(state):
+        i, Ak, Gk, Hk, err = state
+        return jnp.logical_and(i < max_iters, err > tol)
+
+    def body_fun(state):
+        i, Ak, Gk, Hk, _ = state
+
+        M1 = I + Gk @ Hk
+        M2 = I + Hk @ Gk
+
+        # A_{k+1} = A_k (I + G_k H_k)^{-1} A_k
+        Ak_next = _right_solve(Ak, M1) @ Ak
+
+        # G_{k+1} = G_k + A_k G_k (I + H_k G_k)^{-1} A_k^T
+        G_mid = _right_solve(Ak @ Gk, M2)
+        Gk_next = _symmetrize(Gk + G_mid @ Ak.T)
+
+        # H_{k+1} = H_k + A_k^T (I + H_k G_k)^{-1} H_k A_k
+        H_mid = jnp.linalg.solve(M2, Hk @ Ak)
+        Hk_next = _symmetrize(Hk + Ak.T @ H_mid)
+
+        err = jnp.max(jnp.abs(Hk_next - Hk))
+        return (i + 1, Ak_next, Gk_next, Hk_next, err)
+
+    init_err = jnp.array(jnp.inf, dtype=A.dtype)
+    _, _, _, P, _ = jax.lax.while_loop(cond_fun, body_fun, (0, Ak0, Gk0, Hk0, init_err))
+
+    # Recover optimal K for the ORIGINAL problem with cross-term S
+    G = _symmetrize(R + B.T @ P @ B)
+    K = -jax.scipy.linalg.solve(G, B.T @ P @ A + S.T, assume_a="sym")
+
+    return K, _symmetrize(P)
+
+
+@jax.jit
+def _dlqr_riccati(
     A: Float[Array, "dx dx"],
     B: Float[Array, "dx du"],
     H: Float[Array, "dxu dxu"],
     max_iters: int = 200,
     tol: float = 1e-8,
 ) -> tuple[Float[Array, "du dx"], Float[Array, "dx dx"]]:
-    """Solve discrete LQR from joint cost matrix H = [[Q, S], [S^T, R]].
-
-    Returns (K, P) where K is the optimal gain and P the value matrix.
-    """
+    """Solve discrete LQR from joint cost matrix H = [[Q, S], [S^T, R]] via Riccati iteration."""
     n = A.shape[0]
     Q = 0.5 * (H[:n, :n] + H[:n, :n].T)  # (dx, dx)
     S = H[:n, n:]  # (dx, du)
@@ -91,6 +172,38 @@ def dlqr_joint(
     G = R + B.T @ P @ B  # (du, du)
     K = -jax.scipy.linalg.solve(G, (B.T @ P @ A + S.T), assume_a="sym")  # (du, dx)
     return K, P
+
+
+_SOLVERS = {
+    "sda": _dlqr_sda,
+    "riccati": _dlqr_riccati,
+}
+
+
+def dlqr_joint(
+    A: Float[Array, "dx dx"],
+    B: Float[Array, "dx du"],
+    H: Float[Array, "dxu dxu"],
+    max_iters: int | None = None,
+    tol: float = 1e-8,
+    solver: str = "sda",
+) -> tuple[Float[Array, "du dx"], Float[Array, "dx dx"]]:
+    """Solve discrete LQR from joint cost matrix H = [[Q, S], [S^T, R]].
+
+    Returns (K, P) where:
+      - K is the optimal state-feedback gain u = K x
+      - P is the value matrix
+
+    Parameters
+    ----------
+    solver : str
+        "sda" for Structure-Preserving Doubling Algorithm (default),
+        "riccati" for Riccati fixed-point iteration.
+    """
+    fn = _SOLVERS[solver]
+    if max_iters is None:
+        max_iters = 100 if solver == "sda" else 200
+    return fn(A, B, H, max_iters=max_iters, tol=tol)
 
 
 def make_cost_matrix(

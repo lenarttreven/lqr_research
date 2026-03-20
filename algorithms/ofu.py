@@ -62,12 +62,14 @@ class OFU(LQRAlgorithm):
         use_invsqrt: bool = False,
         A0: Float[Array, "dx dx"] | None = None,
         B0: Float[Array, "dx du"] | None = None,
+        solver: str = "sda",
     ):
         self.lam = lam
         self.beta = beta
         self.use_invsqrt = use_invsqrt
         self.A0 = A0
         self.B0 = B0
+        self.solver = solver
 
     def init_state(
         self,
@@ -84,7 +86,7 @@ class OFU(LQRAlgorithm):
         B0 = self.B0 if self.B0 is not None else jnp.zeros((dx, du), dtype=Q.dtype)
 
         # compute initial controller from (A0, B0)
-        K, _ = dlqr_joint(A0, B0, H)
+        K, _ = dlqr_joint(A0, B0, H, solver=self.solver)
 
         return OFUState(
             K=K,
@@ -100,8 +102,8 @@ class OFU(LQRAlgorithm):
             B0=B0,
         )
 
-    @staticmethod
     def get_action(
+        self,
         x: Float[Array, "dx"],
         state: OFUState,
         key: jax.Array,
@@ -111,8 +113,8 @@ class OFU(LQRAlgorithm):
         u = (state.K @ x).reshape((du,))  # (du,)
         return u, state
 
-    @staticmethod
     def update(
+        self,
         x: Float[Array, "dx"],
         u: Float[Array, "du"],
         x_next: Float[Array, "dx"],
@@ -150,7 +152,7 @@ class OFU(LQRAlgorithm):
             H_optim = 0.5 * (
                 state.H - state.beta * O + (state.H - state.beta * O).T
             )  # (dxu, dxu)
-            K_new, _ = dlqr_joint(A_hat, B_hat, H_optim)  # (du, dx)
+            K_new, _ = dlqr_joint(A_hat, B_hat, H_optim, solver=self.solver)  # (du, dx)
             return (K_new, V_cur, logdet_V_cur)
 
         def no_update_branch(args):

@@ -63,12 +63,14 @@ class TS(LQRAlgorithm):
         use_invsqrt: bool = False,
         A0: Float[Array, "dx dx"] | None = None,
         B0: Float[Array, "dx du"] | None = None,
+        solver: str = "sda",
     ):
         self.lam = lam
         self.beta = beta
         self.use_invsqrt = use_invsqrt
         self.A0 = A0
         self.B0 = B0
+        self.solver = solver
 
     def init_state(
         self,
@@ -85,7 +87,7 @@ class TS(LQRAlgorithm):
         B0 = self.B0 if self.B0 is not None else jnp.zeros((dx, du), dtype=Q.dtype)
 
         # compute initial controller from (A0, B0)
-        K, _ = dlqr_joint(A0, B0, H)
+        K, _ = dlqr_joint(A0, B0, H, solver=self.solver)
 
         return TSState(
             K=K,
@@ -102,8 +104,8 @@ class TS(LQRAlgorithm):
             sample_key=jax.random.PRNGKey(0),
         )
 
-    @staticmethod
     def get_action(
+        self,
         x: Float[Array, "dx"],
         state: TSState,
         key: jax.Array,
@@ -113,8 +115,8 @@ class TS(LQRAlgorithm):
         u = (state.K @ x).reshape((du,))  # (du,)
         return u, state._replace(sample_key=key)
 
-    @staticmethod
     def update(
+        self,
         x: Float[Array, "dx"],
         u: Float[Array, "du"],
         x_next: Float[Array, "dx"],
@@ -150,7 +152,7 @@ class TS(LQRAlgorithm):
             A_ts = AB_ts[:, :dx]  # (dx, dx)
             B_ts = AB_ts[:, dx:]  # (dx, du)
 
-            K_new, _ = dlqr_joint(A_ts, B_ts, state.H)  # (du, dx)
+            K_new, _ = dlqr_joint(A_ts, B_ts, state.H, solver=self.solver)  # (du, dx)
             return (K_new, V_cur, logdet_V_cur)
 
         def no_update_branch(args):

@@ -17,6 +17,7 @@ def simulate(
     num_steps: int,
     noise_sigma: float,
     x0: Float[Array, "dx"] | None = None,
+    solver: str = "sda",
 ) -> dict:
     """Run a single-trajectory LQR learning experiment.
 
@@ -36,7 +37,7 @@ def simulate(
         x0 = jnp.zeros((dx,), dtype=A.dtype)
 
     H = make_cost_matrix(Q, R)  # (dx+du, dx+du)
-    k_star, _ = dlqr_joint(A, B, H)  # (du, dx)
+    k_star, _ = dlqr_joint(A, B, H, solver=solver)  # (du, dx)
     optimal_cost = lqr_avg_stage_cost(A, B, Q, R, k_star, noise_sigma)  # scalar
 
     algo_state = algo.init_state(dx, du, Q, R)
@@ -86,6 +87,7 @@ def simulate_many(
     num_steps: int,
     noise_sigma: float,
     x0: Float[Array, "dx"] | None = None,
+    solver: str = "sda",
 ) -> dict:
     """Vmap simulate over multiple random seeds.
 
@@ -94,7 +96,7 @@ def simulate_many(
         regrets: Float[Array, "num_trials T"]
     """
     return jax.vmap(
-        lambda key: simulate(algo, A, B, Q, R, key, num_steps, noise_sigma, x0)
+        lambda key: simulate(algo, A, B, Q, R, key, num_steps, noise_sigma, x0, solver=solver)
     )(keys)
 
 
