@@ -29,6 +29,7 @@ import jax.numpy as jnp
 
 from simulation import simulate_many, plot_regret
 from algorithms.ofu import OFU
+from algorithms.cec import CEC
 from algorithms.cec_pe import CECPE
 from algorithms.laglq import LAGLQ
 from algorithms.oslo import OSLO, simulate_oslo_many
@@ -59,6 +60,7 @@ def run_on_system(
         "OFU (V^{-1})": OFU(
             lam=lam, beta=0.05, use_invsqrt=False, A0=system.A0, B0=system.B0
         ),
+        "CEC (doubling)": CEC(lam=lam, A0=system.A0, B0=system.B0),
         "CEC + PE (doubling)": CECPE(
             lam=lam, init_act_std=1.0, A0=system.A0, B0=system.B0
         ),
