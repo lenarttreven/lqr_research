@@ -18,7 +18,7 @@ import numpy as np
 from jaxtyping import Float, Array
 
 from algorithms.base import LQRAlgorithm
-from lqr_utils import logdet
+from lqr_utils import logdet, dlqr_joint, make_cost_matrix
 
 
 class OSLOState(NamedTuple):
@@ -40,6 +40,7 @@ class OSLOState(NamedTuple):
     A_hat:     Float[Array, "dx dx"]     current estimate of A
     B_hat:     Float[Array, "dx du"]     current estimate of B
     """
+
     K: jax.Array
     V: jax.Array
     V_cur: jax.Array
@@ -84,10 +85,12 @@ def _solve_oslo_sdp(
     AB = np.concatenate([A, B], axis=1)  # (dx, n)
 
     # Cost matrix block-diagonal
-    H = np.block([
-        [Q, np.zeros((dx, du))],
-        [np.zeros((du, dx)), R],
-    ])
+    H = np.block(
+        [
+            [Q, np.zeros((dx, du))],
+            [np.zeros((du, dx)), R],
+        ]
+    )
 
     objective = cp.Minimize(cp.trace(H @ Sigma))
 
@@ -153,11 +156,14 @@ class OSLO(LQRAlgorithm):
         R: Float[Array, "du du"],
     ) -> OSLOState:
         dxu = dx + du
-        V = self.lam * jnp.eye(dxu, dtype=Q.dtype)           # (dxu, dxu)
-        S = jnp.zeros((dx, dxu), dtype=Q.dtype)               # (dx, dxu)
+        H = make_cost_matrix(Q, R)  # (dxu, dxu)
+        V = self.lam * jnp.eye(dxu, dtype=Q.dtype)  # (dxu, dxu)
+        S = jnp.zeros((dx, dxu), dtype=Q.dtype)  # (dx, dxu)
         A0 = self.A0 if self.A0 is not None else jnp.zeros((dx, dx), dtype=Q.dtype)
         B0 = self.B0 if self.B0 is not None else jnp.zeros((dx, du), dtype=Q.dtype)
-        K = jnp.zeros((du, dx), dtype=Q.dtype)                # (du, dx)
+
+        # compute initial controller from (A0, B0)
+        K, _ = dlqr_joint(A0, B0, H)
         return OSLOState(
             K=K,
             V=V,
@@ -198,13 +204,13 @@ class OSLO(LQRAlgorithm):
         where V = lambda I + (1/beta) sum z_s z_s^T  and  S = (1/beta) sum x_{s+1} z_s^T.
         """
         du = state.V.shape[0] - dx
-        AB0 = jnp.concatenate([state.A0, state.B0], axis=1)     # (dx, dxu)
-        RHS = state.lam * AB0 + state.S                          # (dx, dxu)
+        AB0 = jnp.concatenate([state.A0, state.B0], axis=1)  # (dx, dxu)
+        RHS = state.lam * AB0 + state.S  # (dx, dxu)
         AB_hat = jax.scipy.linalg.solve(
             state.V_cur.T, RHS.T, assume_a="sym"
-        ).T                                                       # (dx, dxu)
-        A_hat = AB_hat[:, :dx]                                    # (dx, dx)
-        B_hat = AB_hat[:, dx:]                                    # (dx, du)
+        ).T  # (dx, dxu)
+        A_hat = AB_hat[:, :dx]  # (dx, dx)
+        B_hat = AB_hat[:, dx:]  # (dx, du)
         return A_hat, B_hat
 
     @staticmethod
@@ -239,7 +245,13 @@ class OSLO(LQRAlgorithm):
         W_np = float(sigma) ** 2 * np.eye(dx)
 
         Sigma_opt = _solve_oslo_sdp(
-            A_np, B_np, Q_np, R_np, V_inv_np, W_np, float(mu),
+            A_np,
+            B_np,
+            Q_np,
+            R_np,
+            V_inv_np,
+            W_np,
+            float(mu),
         )
 
         if Sigma_opt is None:
@@ -273,9 +285,9 @@ class OSLO(LQRAlgorithm):
         beta = float(state.beta)
 
         # Accumulate sufficient statistics (scaled by 1/beta)
-        xu = jnp.concatenate([x, u], axis=0)                     # (dxu,)
-        V_cur = state.V_cur + (1.0 / beta) * jnp.outer(xu, xu)   # (dxu, dxu)
-        S = state.S + (1.0 / beta) * jnp.outer(x_next, xu)       # (dx, dxu)
+        xu = jnp.concatenate([x, u], axis=0)  # (dxu,)
+        V_cur = state.V_cur + (1.0 / beta) * jnp.outer(xu, xu)  # (dxu, dxu)
+        S = state.S + (1.0 / beta) * jnp.outer(x_next, xu)  # (dx, dxu)
 
         state = state._replace(V_cur=V_cur, S=S)
 
@@ -289,8 +301,13 @@ class OSLO(LQRAlgorithm):
 
             # Solve relaxed SDP and extract policy (lines 8-9)
             K_new = OSLO._solve_sdp_and_extract_policy(
-                A_hat, B_hat, state.Q, state.R, V_cur,
-                state.sigma, state.mu,
+                A_hat,
+                B_hat,
+                state.Q,
+                state.R,
+                V_cur,
+                state.sigma,
+                state.mu,
             )
 
             if K_new is not None:
@@ -391,7 +408,15 @@ def simulate_oslo_many(
     all_results = []
     for i in range(keys.shape[0]):
         result = simulate_oslo(
-            algo, A, B, Q, R, keys[i], num_steps, noise_sigma, x0,
+            algo,
+            A,
+            B,
+            Q,
+            R,
+            keys[i],
+            num_steps,
+            noise_sigma,
+            x0,
         )
         all_results.append(result)
 
