@@ -1,0 +1,67 @@
+"""Run LQR learning experiments and compare algorithms."""
+
+import jax
+import jax.numpy as jnp
+
+from simulation import simulate_many, plot_regret
+from algorithms.ofu import OFU
+from algorithms.cec_pe import CECPE
+
+
+if __name__ == "__main__":
+    key = jax.random.PRNGKey(0)
+    d_x, d_u = 3, 1
+    dt = 0.1
+
+    A = jnp.array(
+        [
+            [1.0, dt, 0.5 * dt**2],
+            [0.0, 1.0, dt],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    B = jnp.array(
+        [
+            [dt**3 / 6],
+            [dt**2 / 2],
+            [dt],
+        ]
+    )
+    Q = jnp.diag(jnp.array([10.0, 1.0, 0.1]))
+    R = jnp.array([[0.1]])
+
+    num_trials = 100
+    num_steps = 1_000
+    noise_sigma = 0.1
+
+    keys = jax.random.split(key, num_trials)
+    x0 = jax.random.uniform(key, shape=(d_x,))
+
+    # -- Define algorithms --
+    algos = {
+        "OFU (V^{-1})": OFU(lam=1.0, beta=0.05, use_invsqrt=False),
+        "CEC + PE (doubling)": CECPE(lam=1.0, init_act_std=1.0),
+    }
+
+    # -- Run all --
+    results = {}
+    for name, algo in algos.items():
+        print(f"Running {name}...")
+        results[name] = simulate_many(
+            algo,
+            A,
+            B,
+            Q,
+            R,
+            keys,
+            num_steps,
+            noise_sigma,
+            x0,
+        )
+        print(
+            f"  done. Median final cum. regret: "
+            f"{jnp.median(jnp.sum(results[name]['regrets'], axis=1)):.2f}"
+        )
+
+    # -- Plot --
+    plot_regret(results)
