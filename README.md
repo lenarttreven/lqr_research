@@ -19,46 +19,40 @@ The benchmark suite includes:
 ## Requirements
 
 - Python 3.10+
-- `pip`
+- `uv`
 
-The default installation uses the standard `jax` package from PyPI. If you need a platform-specific accelerator build of JAX, install the matching JAX distribution for your machine first, then install this project.
+The default installation uses the standard `jax` package from PyPI. If you need a platform-specific accelerator build of JAX, adjust the dependency resolution accordingly before syncing the project environment.
 
 ## Installation
 
-Create and activate a virtual environment with a Python 3.10+ interpreter
-(for example `python3.11`):
+Create the project environment with `uv`:
 
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
+uv sync --python 3.11
 ```
 
-Install the project and all runtime dependencies:
+This will:
 
-```bash
-python -m pip install -e .
-```
-
-This installs:
-
+- create `.venv`
+- install the local project in editable mode
 - JAX and NumPy for simulation and linear algebra
 - Jaxtyping for type annotations
 - Matplotlib for plotting
 - CVXPY for the OSLO algorithm
+
+If you do not already have a suitable Python installed, `uv` can install one for you:
+
+```bash
+uv python install 3.11
+uv sync --python 3.11
+```
 
 ## Usage
 
 ### Run the small example experiment
 
 ```bash
-python -m run_experiment
-```
-
-Or, after installation:
-
-```bash
-lqr-experiment
+uv run lqr-experiment
 ```
 
 This runs a small 3-state example and opens a cumulative-regret plot.
@@ -66,13 +60,7 @@ This runs a small 3-state example and opens a cumulative-regret plot.
 ### Run the full benchmark suite
 
 ```bash
-python -m run_benchmark
-```
-
-Or, after installation:
-
-```bash
-lqr-benchmark
+uv run lqr-benchmark
 ```
 
 By default this runs all 17 benchmark systems with:
@@ -85,41 +73,48 @@ By default this runs all 17 benchmark systems with:
 Run only the physical systems:
 
 ```bash
-python -m run_benchmark --suite physical
+uv run lqr-benchmark --suite physical
 ```
 
 Run only integrator-chain systems:
 
 ```bash
-python -m run_benchmark --suite integrator
+uv run lqr-benchmark --suite integrator
 ```
 
 Run selected systems by index:
 
 ```bash
-python -m run_benchmark --systems 0 3 9
+uv run lqr-benchmark --systems 0 3 9
 ```
 
 Change the number of trials and steps:
 
 ```bash
-python -m run_benchmark --num-trials 50 --num-steps 500
+uv run lqr-benchmark --num-trials 50 --num-steps 500
 ```
 
 Set the random seed:
 
 ```bash
-python -m run_benchmark --seed 42
+uv run lqr-benchmark --seed 42
 ```
 
 Tune selected algorithm hyperparameters:
 
 ```bash
-python -m run_benchmark \
+uv run lqr-benchmark \
   --lam 0.1 \
   --oslo-mu 0.1 \
   --oslo-beta 1.0 \
   --laglq-delta 0.05
+```
+
+If you prefer to activate the virtual environment manually first:
+
+```bash
+source .venv/bin/activate
+lqr-benchmark
 ```
 
 ## Using the Code as a Library

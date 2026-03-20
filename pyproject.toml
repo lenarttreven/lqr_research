@@ -25,6 +25,9 @@ classifiers = [
 lqr-benchmark = "run_benchmark:main"
 lqr-experiment = "run_experiment:main"
 
+[tool.uv]
+package = true
+
 [tool.setuptools]
 py-modules = [
     "lqr_utils",
