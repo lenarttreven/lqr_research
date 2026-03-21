@@ -1,6 +1,9 @@
+import time
+
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import numpy as np
 from jaxtyping import Float, Array
 
 from algorithms.base import LQRAlgorithm
@@ -166,3 +169,105 @@ def plot_results(
     if save_path is not None:
         fig.savefig(save_path, bbox_inches="tight")
     plt.show()
+
+
+def simulate_timed(
+    algo: type[LQRAlgorithm],
+    A: Float[Array, "dx dx"],
+    B: Float[Array, "dx du"],
+    Q: Float[Array, "dx dx"],
+    R: Float[Array, "du du"],
+    key: jax.Array,
+    num_steps: int,
+    noise_sigma: float,
+    x0: Float[Array, "dx"] | None = None,
+    solver: str = "sda",
+) -> dict:
+    """Run a single trajectory, timing only steps where K is recomputed.
+
+    Uses a Python for-loop (slower than scan) so we can measure wall-clock
+    time of each controller recomputation.  Only records a timing when the
+    gain matrix K actually changes after ``algo.update``.
+
+    Returns dict with the same keys as ``simulate`` plus:
+        update_times:  list[float]  wall-clock seconds for each recomputation
+        update_steps:  list[int]    time-step indices where K was recomputed
+        num_updates:   int          total number of controller recomputations
+    """
+    dx, du = B.shape
+    if x0 is None:
+        x0 = jnp.zeros((dx,), dtype=A.dtype)
+
+    H = make_cost_matrix(Q, R)
+    k_star, _ = dlqr_joint(A, B, H, solver=solver)
+    optimal_cost = lqr_avg_stage_cost(A, B, Q, R, k_star, noise_sigma)
+
+    algo_state = algo.init_state(dx, du, Q, R)
+
+    # JIT the update for JAX-traceable algorithms (not OSLO which uses CVXPY)
+    from algorithms.oslo import OSLO
+    can_jit = not isinstance(algo, OSLO)
+    if can_jit:
+        update_fn = jax.jit(algo.update)
+        # warmup: compile once so JIT overhead is excluded from timing
+        _dummy_state = update_fn(x0, jnp.zeros((du,), dtype=A.dtype), x0, algo_state, jnp.int32(0))
+        jax.block_until_ready(_dummy_state)
+        del _dummy_state
+    else:
+        update_fn = algo.update
+
+    costs = []
+    regrets = []
+    gains = []
+    update_times: list[float] = []
+    update_steps: list[int] = []
+    x = x0
+
+    for t in range(num_steps):
+        key, sub_act, sub_w = jax.random.split(key, 3)
+
+        # action
+        u, algo_state = algo.get_action(x, algo_state, sub_act)
+
+        # environment dynamics
+        w = noise_sigma * jax.random.normal(sub_w, shape=(dx,), dtype=A.dtype)
+        x_next = A @ x + B @ u + w
+
+        # snapshot K before update
+        K_before = algo_state.K
+
+        # --- time the update call ---
+        t0 = time.perf_counter()
+        algo_state = update_fn(x, u, x_next, algo_state, jnp.int32(t))
+        jax.block_until_ready(algo_state)
+        elapsed = time.perf_counter() - t0
+        # ----------------------------
+
+        # record timing only when K actually changed
+        if not jnp.array_equal(K_before, algo_state.K):
+            update_times.append(elapsed)
+            update_steps.append(t)
+
+        cost = float(x.T @ Q @ x + u.T @ R @ u)
+        regret = cost - float(optimal_cost)
+        costs.append(cost)
+        regrets.append(regret)
+        gains.append(algo_state.K)
+
+        x = x_next
+
+    gains_arr = jnp.stack(gains)
+    expected_costs = jax.vmap(
+        lambda K: lqr_avg_stage_cost(A, B, Q, R, K, noise_sigma)
+    )(gains_arr)
+
+    return {
+        "costs": jnp.array(costs),
+        "regrets": jnp.array(regrets),
+        "expected_costs": expected_costs,
+        "optimal_cost": optimal_cost,
+        "k_star": k_star,
+        "update_times": update_times,
+        "update_steps": update_steps,
+        "num_updates": len(update_times),
+    }
