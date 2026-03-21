@@ -26,7 +26,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from simulation import simulate_timed
-from algorithms.ofu import OFU
+from algorithms.irlqr import IRLQR
 from algorithms.cec import CEC
 from algorithms.cec_pe import CECPE
 from algorithms.laglq import LAGLQ
@@ -54,7 +54,7 @@ def time_on_system(
     """Run all algorithms on a single system, return results with timing."""
 
     algos = {
-        "IR-LQR": OFU(
+        "IR-LQR": IRLQR(
             lam=lam, beta=0.05, use_invsqrt=False, A0=system.A0, B0=system.B0
         ),
         "Thompson Sampling": TS(lam=lam, beta=0.05, A0=system.A0, B0=system.B0),

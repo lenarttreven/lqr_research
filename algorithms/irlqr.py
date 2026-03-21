@@ -1,4 +1,4 @@
-"""Optimism in the Face of Uncertainty (OFU) for LQR.
+"""Optimism in the Face of Uncertainty (IRLQR) for LQR.
 
 Uses RLS estimation with determinant-doubling trigger and an optimistic
 cost matrix: H_optim = H - beta * V^{-1} (or V^{-1/2}).
@@ -20,8 +20,8 @@ from lqr_utils import (
 )
 
 
-class OFUState(NamedTuple):
-    """Algorithm state for OFU-LQR.
+class IRLQRState(NamedTuple):
+    """Algorithm state for IRLQR-LQR.
 
     K:           Float[Array, "du dx"]     current controller gain
     V:           Float[Array, "dxu dxu"]   committed RLS design matrix
@@ -49,8 +49,8 @@ class OFUState(NamedTuple):
     B0: jax.Array
 
 
-class OFU(LQRAlgorithm):
-    """OFU-LQR with determinant-doubling trigger.
+class IRLQR(LQRAlgorithm):
+    """IRLQR-LQR with determinant-doubling trigger.
 
     Constructor args stored as class attributes, used by init_state.
     """
@@ -77,7 +77,7 @@ class OFU(LQRAlgorithm):
         du: int,
         Q: Float[Array, "dx dx"],
         R: Float[Array, "du du"],
-    ) -> OFUState:
+    ) -> IRLQRState:
         dxu = dx + du
         H = make_cost_matrix(Q, R)  # (dxu, dxu)
         V = self.lam * jnp.eye(dxu, dtype=Q.dtype)  # (dxu, dxu)
@@ -88,7 +88,7 @@ class OFU(LQRAlgorithm):
         # compute initial controller from (A0, B0)
         K, _ = dlqr_joint(A0, B0, H, solver=self.solver)
 
-        return OFUState(
+        return IRLQRState(
             K=K,
             V=V,
             V_cur=V,
@@ -105,10 +105,10 @@ class OFU(LQRAlgorithm):
     def get_action(
         self,
         x: Float[Array, "dx"],
-        state: OFUState,
+        state: IRLQRState,
         key: jax.Array,
-    ) -> tuple[Float[Array, "du"], OFUState]:
-        """Deterministic action u = K @ x (no exploration noise in OFU)."""
+    ) -> tuple[Float[Array, "du"], IRLQRState]:
+        """Deterministic action u = K @ x (no exploration noise in IRLQR)."""
         du = state.K.shape[0]
         u = (state.K @ x).reshape((du,))  # (du,)
         return u, state
@@ -118,9 +118,9 @@ class OFU(LQRAlgorithm):
         x: Float[Array, "dx"],
         u: Float[Array, "du"],
         x_next: Float[Array, "dx"],
-        state: OFUState,
+        state: IRLQRState,
         t: int,
-    ) -> OFUState:
+    ) -> IRLQRState:
         """Accumulate RLS stats; recompute controller when det doubles."""
         dx = x.shape[0]
 

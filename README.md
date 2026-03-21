@@ -4,7 +4,7 @@ This repository contains JAX implementations of several adaptive linear-quadrati
 
 Implemented algorithms:
 
-- OFU
+- IR-LQR
 - Thompson Sampling
 - CEC
 - CEC + PE
@@ -116,6 +116,19 @@ python run_benchmark.py \
   --laglq-delta 0.05
 ```
 
+### Benchmark controller computation time
+
+```bash
+python run_timing.py
+```
+
+This measures the wall-clock time of each controller recomputation (only steps where K actually changes). Accepts the same `--suite`, `--systems`, and `--num-steps` flags as `run_benchmark.py`:
+
+```bash
+python run_timing.py --suite physical --num-steps 500
+python run_timing.py --systems 0 3
+```
+
 ## Using the Code as a Library
 
 The code can also be imported directly from Python modules:
@@ -123,13 +136,13 @@ The code can also be imported directly from Python modules:
 ```python
 import jax
 
-from algorithms.ofu import OFU
+from algorithms.irlqr import IRLQR
 from simulation import simulate_many
 from systems import get_physical_systems
 
 key = jax.random.PRNGKey(0)
 system = get_physical_systems(key)[0]
-algo = OFU(lam=0.1, beta=0.05, A0=system.A0, B0=system.B0)
+algo = IRLQR(lam=0.1, beta=0.05, A0=system.A0, B0=system.B0)
 keys = jax.random.split(key, 5)
 
 results = simulate_many(
@@ -151,6 +164,7 @@ results = simulate_many(
 
 - `run_experiment.py`: small example experiment
 - `run_benchmark.py`: benchmark CLI over all systems
+- `run_timing.py`: controller computation time benchmark
 - `systems.py`: benchmark-system definitions
 - `simulation.py`: simulation and plotting utilities
 - `algorithms/`: algorithm implementations
