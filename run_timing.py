@@ -113,40 +113,40 @@ def plot_timing(
     title: str = "",
     save_path: str | None = None,
 ) -> None:
-    """Bar chart of total and mean controller recomputation time."""
+    """Bar chart with median, 0.2/0.8 quantile error bars, and update count."""
     names = list(results_dict.keys())
-    totals = []
-    means_ms = []
+    medians_ms = []
+    q20_ms = []
+    q80_ms = []
     num_updates = []
     for n in names:
-        times = results_dict[n]["update_times"]
+        times = np.array(results_dict[n]["update_times"])
         nu = results_dict[n]["num_updates"]
         num_updates.append(nu)
         if nu > 0:
-            totals.append(sum(times))
-            means_ms.append(sum(times) / nu * 1e3)
+            medians_ms.append(float(np.median(times)) * 1e3)
+            q20_ms.append(float(np.quantile(times, 0.2)) * 1e3)
+            q80_ms.append(float(np.quantile(times, 0.8)) * 1e3)
         else:
-            totals.append(0.0)
-            means_ms.append(0.0)
+            medians_ms.append(0.0)
+            q20_ms.append(0.0)
+            q80_ms.append(0.0)
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-    ax_total, ax_mean, ax_count = axes
+    medians_ms = np.array(medians_ms)
+    q20_ms = np.array(q20_ms)
+    q80_ms = np.array(q80_ms)
+
+    fig, (ax_time, ax_count) = plt.subplots(1, 2, figsize=(12, 4))
 
     x = np.arange(len(names))
-
-    ax_total.bar(x, totals)
-    ax_total.set_xticks(x)
-    ax_total.set_xticklabels(names, rotation=30, ha="right")
-    ax_total.set_ylabel("Total time (s)")
-    ax_total.set_title("Total controller recomputation time")
-    ax_total.grid(axis="y")
-
-    ax_mean.bar(x, means_ms)
-    ax_mean.set_xticks(x)
-    ax_mean.set_xticklabels(names, rotation=30, ha="right")
-    ax_mean.set_ylabel("Mean time (ms)")
-    ax_mean.set_title("Mean time per recomputation")
-    ax_mean.grid(axis="y")
+    yerr = np.array([medians_ms - q20_ms, q80_ms - medians_ms])
+    ax_time.bar(x, medians_ms, yerr=yerr, capsize=4)
+    ax_time.set_xticks(x)
+    ax_time.set_xticklabels(names, rotation=30, ha="right")
+    ax_time.set_yscale("log")
+    ax_time.set_ylabel("Time (ms)")
+    ax_time.set_title("Controller recomputation time (median, 20–80% quantile)")
+    ax_time.grid(axis="y")
 
     ax_count.bar(x, num_updates)
     ax_count.set_xticks(x)
