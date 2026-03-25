@@ -328,3 +328,28 @@ def logdet(M: Float[Array, "n n"]) -> Float[Array, ""]:
     """Log-determinant of a matrix, returns -inf if non-positive."""
     sign, ld = jnp.linalg.slogdet(M)
     return jnp.where(sign > 0, ld, -jnp.inf)
+
+
+def sclip(P: Float[Array, "dxu dxu"], c: float) -> Float[Array, "dxu dxu"]:
+    """
+    Applies spectral clipping to a positive semi-definite matrix P by 
+    capping its eigenvalues from above at a maximum value c.
+    
+    Args:
+        P: A 2D array representing a positive semi-definite matrix.
+        c: A positive float representing the clipping threshold.
+        
+    Returns:
+        A 2D array representing the spectrally clipped matrix.
+    """
+    # 1. Compute the eigendecomposition (eigh is used for symmetric matrices)
+    # eigenvalues will be 1D array of lambda_i, U will have eigenvectors as columns
+    eigenvalues, U = jnp.linalg.eigh(P)
+    
+    # 2. Cap the eigenvalues at c: min{lambda_i, c}
+    clipped_eigenvalues = jnp.minimum(eigenvalues, c)
+    
+    # 3. Reconstruct the matrix: U * diag(clipped_eigenvalues) * U^T
+    P_clipped = U @ jnp.diag(clipped_eigenvalues) @ U.T
+    
+    return P_clipped

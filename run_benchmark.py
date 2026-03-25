@@ -92,7 +92,7 @@ def load_data(path: str) -> tuple[str, dict[str, dict]]:
         res = {}
         for full_key in data.files:
             if full_key.startswith(f"{prefix}/"):
-                short_key = full_key[len(prefix) + 1:]
+                short_key = full_key[len(prefix) + 1 :]
                 res[short_key] = jnp.array(data[full_key])
         results[name] = res
 
@@ -115,15 +115,11 @@ def run_on_system(
     """Run all algorithms on a single system, return results dict."""
 
     scan_algos = {
-        "IR-LQR": IRLQR(
-            lam=lam, beta=2.5, use_invsqrt=True, A0=system.A0, B0=system.B0, solver=solver,
-        ),
-        "Thompson Sampling": TS(lam=lam, beta=1.0, A0=system.A0, B0=system.B0, solver=solver),
-        "CEC (doubling)": CEC(lam=lam, A0=system.A0, B0=system.B0, solver=solver),
-        "CEC + PE (doubling)": CECPE(
-            lam=lam, init_act_std=1.0, A0=system.A0, B0=system.B0, solver=solver,
-        ),
-        "LAGLQ": LAGLQ(
+        "IR-LQR": IRLQR(lam=lam, beta=2, use_invsqrt=False, A0=system.A0, B0=system.B0),
+        "TS": TS(lam=lam, beta=0.05, A0=system.A0, B0=system.B0),
+        "CEC": CEC(lam=lam, A0=system.A0, B0=system.B0),
+        "CEC+PE": CECPE(lam=lam, init_act_std=1.0, A0=system.A0, B0=system.B0),
+        "LagLQ": LAGLQ(
             lam=lam,
             beta=laglq_beta,
             eps=laglq_eps,

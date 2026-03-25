@@ -76,9 +76,9 @@ def simulate(
     )
 
     # Expected per-step cost under each controller gain
-    expected_costs = jax.vmap(
-        lambda K: lqr_avg_stage_cost(A, B, Q, R, K, noise_sigma)
-    )(gains)  # (T,)
+    expected_costs = jax.vmap(lambda K: lqr_avg_stage_cost(A, B, Q, R, K, noise_sigma))(
+        gains
+    )  # (T,)
 
     # Cumulative controller update count: detect when K changes between steps
     K_init = algo.init_state(dx, du, Q, R).K
@@ -115,7 +115,9 @@ def simulate_many(
         regrets: Float[Array, "num_trials T"]
     """
     return jax.vmap(
-        lambda key: simulate(algo, A, B, Q, R, key, num_steps, noise_sigma, x0, solver=solver)
+        lambda key: simulate(
+            algo, A, B, Q, R, key, num_steps, noise_sigma, x0, solver=solver
+        )
     )(keys)
 
 
@@ -124,22 +126,26 @@ def plot_results(
     title: str = "",
     log_y: bool = False,
     save_path: str | None = None,
+    plot_cost: bool = False,
 ) -> None:
-    """Plot cumulative regret, per-step excess cost, and controller updates (3 subplots).
+    """Plot cumulative regret and optionally per-step excess cost.
 
     Args:
         results_dict: {algo_name: results} where results comes from simulate_many.
         title: Overall figure title.
-        log_y: If True, use logarithmic y-axis on regret and cost subplots.
+        log_y: If True, use logarithmic y-axis on subplots.
         save_path: If provided, save the figure to this path.
     """
-    has_updates = any("cum_updates" in res for res in results_dict.values())
-    n_plots = 3 if has_updates else 2
-    fig, axes = plt.subplots(1, n_plots, figsize=(6 * n_plots, 4))
-    ax_regret, ax_cost = axes[0], axes[1]
-    ax_updates = axes[2] if has_updates else None
-
     linestyles = ["-", "--", ":", "-."]
+
+    # Adjust columns and figure size based on whether we plot the cost
+    ncols = 2 if plot_cost else 1
+    figsize = (12, 4) if plot_cost else (6.5, 4)
+
+    # squeeze=False ensures `axes` is always a 2D array, avoiding unpacking errors
+    fig, axes = plt.subplots(1, ncols, figsize=figsize, squeeze=False)
+    ax_regret = axes[0, 0]
+    ax_cost = axes[0, 1] if plot_cost else None
 
     for i, (name, results) in enumerate(results_dict.items()):
         ls = linestyles[i % len(linestyles)]
@@ -153,50 +159,40 @@ def plot_results(
         ax_regret.fill_between(t, q20, q80, alpha=0.15)
 
         # Expected per-step cost minus optimal cost
-        excess = results["expected_costs"] - results["optimal_cost"][:, None]  # (num_trials, T)
-        excess = jnp.clip(excess, a_min=-1e30, a_max=1e30)
-        q20, q50, q80 = jnp.quantile(excess, jnp.array([0.2, 0.5, 0.8]), axis=0)
-        ax_cost.plot(t, q50, label=name, linestyle=ls)
-        ax_cost.fill_between(t, q20, q80, alpha=0.15)
+        if plot_cost:
+            excess = (
+                results["expected_costs"] - results["optimal_cost"][:, None]
+            )  # (num_trials, T)
+            q20, q50, q80 = jnp.quantile(excess, jnp.array([0.2, 0.5, 0.8]), axis=0)
+            ax_cost.plot(t, q50, label=name, linestyle=ls)
+            ax_cost.fill_between(t, q20, q80, alpha=0.15)
 
-        # Cumulative controller updates
-        if ax_updates is not None and "cum_updates" in results:
-            updates = results["cum_updates"]  # (num_trials, T)
-            q20, q50, q80 = jnp.quantile(updates, jnp.array([0.2, 0.5, 0.8]), axis=0)
-            ax_updates.plot(t, q50, label=name, linestyle=ls)
-            ax_updates.fill_between(t, q20, q80, alpha=0.15)
+    # Formatting active axes
+    active_axes = [ax_regret, ax_cost] if plot_cost else [ax_regret]
 
     if log_y:
-        ax_regret.set_yscale("log")
-        ax_cost.set_yscale("log")
-        # Clamp y-limits to avoid overflow in log tick formatter
-        for ax in (ax_regret, ax_cost):
-            ymin, ymax = ax.get_ylim()
-            if not jnp.isfinite(ymax) or ymax > 1e300:
-                ax.set_ylim(top=1e300)
-            if not jnp.isfinite(ymin) or ymin <= 0:
-                ax.set_ylim(bottom=1e-1)
+        for ax in active_axes:
+            ax.set_yscale("log")
 
-    for ax in axes:
+    for ax in active_axes:
         ax.set_xlabel("Time step")
         ax.grid()
 
     ax_regret.set_ylabel("Cumulative Regret")
     ax_regret.set_title("Cumulative Regret")
-    ax_cost.set_ylabel("Expected Cost − Optimal Cost")
-    ax_cost.set_title("Expected Per-Step Excess Cost")
-    if ax_updates is not None:
-        ax_updates.set_ylabel("Cumulative Updates")
-        ax_updates.set_title("Controller Updates")
+
+    if plot_cost:
+        ax_cost.set_ylabel("Expected Cost − Optimal Cost")
+        ax_cost.set_title("Expected Per-Step Excess Cost")
 
     if title:
         fig.suptitle(title)
+
     fig.tight_layout(rect=[0, 0, 1, 0.88])
 
     # Single legend on top with 3 columns (below suptitle)
     handles, labels = ax_regret.get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=3,
-               bbox_to_anchor=(0.5, 0.93))
+    fig.legend(handles, labels, loc="upper center", ncol=3, bbox_to_anchor=(0.5, 0.93))
 
     if save_path is not None:
         fig.savefig(save_path, bbox_inches="tight")
@@ -238,11 +234,14 @@ def simulate_timed(
 
     # JIT the update for JAX-traceable algorithms (not OSLO which uses CVXPY)
     from algorithms.oslo import OSLO
+
     can_jit = not isinstance(algo, OSLO)
     if can_jit:
         update_fn = jax.jit(algo.update)
         # warmup: compile once so JIT overhead is excluded from timing
-        _dummy_state = update_fn(x0, jnp.zeros((du,), dtype=A.dtype), x0, algo_state, jnp.int32(0))
+        _dummy_state = update_fn(
+            x0, jnp.zeros((du,), dtype=A.dtype), x0, algo_state, jnp.int32(0)
+        )
         jax.block_until_ready(_dummy_state)
         del _dummy_state
     else:
@@ -289,9 +288,9 @@ def simulate_timed(
         x = x_next
 
     gains_arr = jnp.stack(gains)
-    expected_costs = jax.vmap(
-        lambda K: lqr_avg_stage_cost(A, B, Q, R, K, noise_sigma)
-    )(gains_arr)
+    expected_costs = jax.vmap(lambda K: lqr_avg_stage_cost(A, B, Q, R, K, noise_sigma))(
+        gains_arr
+    )
 
     return {
         "costs": jnp.array(costs),

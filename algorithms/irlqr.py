@@ -17,6 +17,7 @@ from lqr_utils import (
     rls_estimate,
     logdet,
     sym_invsqrt,
+    sclip,
 )
 
 
@@ -31,9 +32,10 @@ class IRLQRState(NamedTuple):
     H:           Float[Array, "dxu dxu"]   joint cost matrix (cached)
     beta:        Float[Array, ""]          optimism bonus scale
     lam:         Float[Array, ""]          regularization
-    use_invsqrt: bool                      if True, use V^{-1/2} instead of V^{-1}
+    use_invsqrt: bool                      if True, use V^{-1/2} instead of ||V||^{1/2}*V^{-1}
     A0:          Float[Array, "dx dx"]     initial estimate of A
     B0:          Float[Array, "dx du"]     initial estimate of B
+    c_lam:       Floar[Array, ""]          max eigenvalue for spectral clipping sclip
     """
 
     K: jax.Array
@@ -47,6 +49,7 @@ class IRLQRState(NamedTuple):
     use_invsqrt: jax.Array
     A0: jax.Array
     B0: jax.Array
+    c_lam : jax.Array
 
 
 class IRLQR(LQRAlgorithm):
@@ -63,6 +66,7 @@ class IRLQR(LQRAlgorithm):
         A0: Float[Array, "dx dx"] | None = None,
         B0: Float[Array, "dx du"] | None = None,
         solver: str = "sda",
+        c_lam: float = 1,
     ):
         self.lam = lam
         self.beta = beta
@@ -70,6 +74,7 @@ class IRLQR(LQRAlgorithm):
         self.A0 = A0
         self.B0 = B0
         self.solver = solver
+        self.c_lam = c_lam
 
     def init_state(
         self,
@@ -84,6 +89,8 @@ class IRLQR(LQRAlgorithm):
         S = jnp.zeros((dx, dxu), dtype=Q.dtype)  # (dx, dxu)
         A0 = self.A0 if self.A0 is not None else jnp.zeros((dx, dx), dtype=Q.dtype)
         B0 = self.B0 if self.B0 is not None else jnp.zeros((dx, du), dtype=Q.dtype)
+        Heigs, _ = jnp.linalg.eigh(H)
+        c_lam = Heigs[0]*0.95
 
         # compute initial controller from (A0, B0)
         K, _ = dlqr_joint(A0, B0, H, solver=self.solver)
@@ -100,6 +107,7 @@ class IRLQR(LQRAlgorithm):
             use_invsqrt=jnp.array(self.use_invsqrt),
             A0=A0,
             B0=B0,
+            c_lam=c_lam
         )
 
     def get_action(
@@ -145,12 +153,12 @@ class IRLQR(LQRAlgorithm):
             O_inv = jax.scipy.linalg.solve(
                 V_cur, jnp.eye(dxu, dtype=V_cur.dtype), assume_a="sym"
             )  # (dxu, dxu)
-            O_inv = 0.5 * (O_inv + O_inv.T)
+            O_inv = jnp.sqrt(jnp.linalg.norm(V_cur, ord=2)) * 0.5 * (O_inv + O_inv.T)
             O_invsqrt = sym_invsqrt(V_cur)  # (dxu, dxu)
-            O = jnp.where(state.use_invsqrt, O_invsqrt, O_inv)  # (dxu, dxu)
+            O = sclip(state.beta * jnp.where(state.use_invsqrt, O_invsqrt, O_inv), self.c_lam)  # (dxu, dxu)
 
             H_optim = 0.5 * (
-                state.H - state.beta * O + (state.H - state.beta * O).T
+                (state.H - O) + (state.H -  O).T
             )  # (dxu, dxu)
             K_new, _ = dlqr_joint(A_hat, B_hat, H_optim, solver=self.solver)  # (du, dx)
             return (K_new, V_cur, logdet_V_cur)

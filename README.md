@@ -4,12 +4,12 @@ This repository contains JAX implementations of several adaptive linear-quadrati
 
 Implemented algorithms:
 
-- IR-LQR
-- Thompson Sampling
-- CEC
-- CEC + PE
-- LAGLQ
-- OSLO
+- Intrinsic Reward LQR (IR-LQR, ours)
+- Thompson Sampling (TS, https://arxiv.org/pdf/1703.08972)
+- Certainty Equivalent Control with Persistent Exication (CEC+PE, https://arxiv.org/pdf/2001.09576)
+- CEC: the same as CEC+PE but without noise injection.
+- Optimistic LQR via Lagrangian Relaxation (LagLQ, https://arxiv.org/pdf/2007.06482)
+- Optimistic Semidefinite Programming for LQ Control (OSLO, https://proceedings.mlr.press/v97/cohen19b/cohen19b.pdf)
 
 The benchmark suite includes:
 
