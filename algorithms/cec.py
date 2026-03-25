@@ -18,8 +18,9 @@ class CEC(CECPE):
         lam: float = 1.0,
         A0: Float[Array, "dx dx"] | None = None,
         B0: Float[Array, "dx du"] | None = None,
+        solver: str = "sda",
     ):
-        super().__init__(lam=lam, init_act_std=0.0, A0=A0, B0=B0)
+        super().__init__(lam=lam, init_act_std=0.0, A0=A0, B0=B0, solver=solver)
 
     @staticmethod
     def get_action(

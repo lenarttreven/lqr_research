@@ -65,6 +65,10 @@ This runs a small 3-state example and opens a cumulative-regret plot.
 
 ### Run the full benchmark suite
 
+Running and plotting are separate steps. First run the experiments to save results to disk, then plot from the saved data. This lets you re-plot with different settings without re-running experiments.
+
+**Step 1: Run experiments** (saves `.npz` files to `results/`):
+
 ```bash
 python run_benchmark.py
 ```
@@ -73,6 +77,24 @@ By default this runs all 17 benchmark systems with:
 
 - `100` trials per system
 - `1000` time steps per trial
+
+Results are saved as `.npz` files in the `results/` directory (one file per system).
+
+**Step 2: Plot results**:
+
+```bash
+# Plot all saved results interactively
+python plot_benchmark.py
+
+# Save figures to disk
+python plot_benchmark.py --save-dir figures
+
+# Plot a single system
+python plot_benchmark.py --files results/Pendulum.npz
+
+# Use linear y-axis
+python plot_benchmark.py --no-log-y
+```
 
 ### Common benchmark commands
 
@@ -104,6 +126,13 @@ Set the random seed:
 
 ```bash
 python run_benchmark.py --seed 42
+```
+
+Save results to a custom directory:
+
+```bash
+python run_benchmark.py --output-dir results/my_experiment
+python plot_benchmark.py --input-dir results/my_experiment
 ```
 
 Tune selected algorithm hyperparameters:
@@ -163,7 +192,8 @@ results = simulate_many(
 ## Repository Layout
 
 - `run_experiment.py`: small example experiment
-- `run_benchmark.py`: benchmark CLI over all systems
+- `run_benchmark.py`: run benchmark experiments and save results to disk
+- `plot_benchmark.py`: load saved results and plot them
 - `run_timing.py`: controller computation time benchmark
 - `systems.py`: benchmark-system definitions
 - `simulation.py`: simulation and plotting utilities
@@ -173,4 +203,4 @@ results = simulate_many(
 
 - All algorithms except OSLO are fully JIT-compiled with JAX. OSLO requires solving a semidefinite program (SDP) via CVXPY at each step, which makes it considerably slower than the other methods.
 - LAGLQ additionally requires solving several discrete algebraic Riccati equations (DAREs) per controller update, so it is also considerably slower than the remaining JIT-compiled methods.
-- `run_benchmark.py` opens plots with Matplotlib via `plt.show()`, so run it in an environment with a display or configure a non-interactive backend if needed.
+- `plot_benchmark.py` opens plots with Matplotlib via `plt.show()`, so run it in an environment with a display or use `--save-dir` to write figures to disk without a display.

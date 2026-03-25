@@ -24,7 +24,7 @@ class LQRSystem:
     A0: Float[Array, "dx dx"]
     B0: Float[Array, "dx du"]
     x0: Float[Array, "dx"]
-    noise_sigma: float = 0.1
+    noise_sigma: float = 1.0
 
 
 def _integrator_chain(d_x: int, d_u: int, dt: float) -> tuple[jnp.ndarray, jnp.ndarray]:
@@ -99,7 +99,9 @@ def make_system(
     )
 
 
-def _discretize(Ac: jnp.ndarray, Bc: jnp.ndarray, dt: float) -> tuple[jnp.ndarray, jnp.ndarray]:
+def _discretize(
+    Ac: jnp.ndarray, Bc: jnp.ndarray, dt: float
+) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Zero-order hold discretization of a continuous-time system."""
     d_x = Ac.shape[0]
     # Matrix exponential method: build [[Ac, Bc], [0, 0]] * dt, exponentiate.
@@ -131,30 +133,36 @@ def _perturb_prior(
 # ---------------------------------------------------------------------------
 
 
-def make_cart_pole(key: jax.Array, dt: float = 0.02, perturbation: float = 0.05) -> LQRSystem:
+def make_cart_pole(
+    key: jax.Array, dt: float = 0.02, perturbation: float = 0.05
+) -> LQRSystem:
     """Linearized cart-pole (inverted pendulum on cart).
 
     State: [x, x_dot, theta, theta_dot], Input: [force].
     Linearized about the upright equilibrium.  d_x=4, d_u=1.
     """
     g = 9.81
-    m_c = 1.0   # cart mass
-    m_p = 0.1   # pole mass
-    l = 0.5     # pole half-length
+    m_c = 1.0  # cart mass
+    m_p = 0.1  # pole mass
+    l = 0.5  # pole half-length
     total = m_c + m_p
 
-    Ac = jnp.array([
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, -m_p * g / total, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-        [0.0, 0.0, total * g / (total * l), 0.0],
-    ])
-    Bc = jnp.array([
-        [0.0],
-        [1.0 / total],
-        [0.0],
-        [-1.0 / (total * l)],
-    ])
+    Ac = jnp.array(
+        [
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, -m_p * g / total, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, total * g / (total * l), 0.0],
+        ]
+    )
+    Bc = jnp.array(
+        [
+            [0.0],
+            [1.0 / total],
+            [0.0],
+            [-1.0 / (total * l)],
+        ]
+    )
 
     A_star, B_star = _discretize(Ac, Bc, dt)
     Q = jnp.diag(jnp.array([1.0, 0.1, 10.0, 0.1]))
@@ -162,30 +170,38 @@ def make_cart_pole(key: jax.Array, dt: float = 0.02, perturbation: float = 0.05)
     # Start displaced: cart at 0.5m, pole tilted 5 deg (~0.087 rad)
     x0 = jnp.array([0.5, 0.0, 0.087, 0.0])
     A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
-    return LQRSystem(name="cart_pole", A_star=A_star, B_star=B_star, Q=Q, R=R, A0=A0, B0=B0, x0=x0)
+    return LQRSystem(
+        name="cart_pole", A_star=A_star, B_star=B_star, Q=Q, R=R, A0=A0, B0=B0, x0=x0
+    )
 
 
-def make_dc_motor(key: jax.Array, dt: float = 0.01, perturbation: float = 0.05) -> LQRSystem:
+def make_dc_motor(
+    key: jax.Array, dt: float = 0.01, perturbation: float = 0.05
+) -> LQRSystem:
     """DC motor with armature dynamics.
 
     State: [angle, angular_vel, current], Input: [voltage].  d_x=3, d_u=1.
     """
-    J = 0.01    # rotor inertia
-    b = 0.1     # viscous friction
-    K = 0.01    # motor constant (= back-emf constant)
-    R_a = 1.0   # armature resistance
-    L = 0.5     # armature inductance
+    J = 0.01  # rotor inertia
+    b = 0.1  # viscous friction
+    K = 0.01  # motor constant (= back-emf constant)
+    R_a = 1.0  # armature resistance
+    L = 0.5  # armature inductance
 
-    Ac = jnp.array([
-        [0.0, 1.0, 0.0],
-        [0.0, -b / J, K / J],
-        [0.0, -K / L, -R_a / L],
-    ])
-    Bc = jnp.array([
-        [0.0],
-        [0.0],
-        [1.0 / L],
-    ])
+    Ac = jnp.array(
+        [
+            [0.0, 1.0, 0.0],
+            [0.0, -b / J, K / J],
+            [0.0, -K / L, -R_a / L],
+        ]
+    )
+    Bc = jnp.array(
+        [
+            [0.0],
+            [0.0],
+            [1.0 / L],
+        ]
+    )
 
     A_star, B_star = _discretize(Ac, Bc, dt)
     Q = jnp.diag(jnp.array([10.0, 1.0, 0.1]))
@@ -193,7 +209,16 @@ def make_dc_motor(key: jax.Array, dt: float = 0.01, perturbation: float = 0.05) 
     # Start at 1 rad angle, zero velocity, zero current
     x0 = jnp.array([1.0, 0.0, 0.0])
     A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
-    return LQRSystem(name="dc_motor", A_star=A_star, B_star=B_star, Q=Q, R=R_cost, A0=A0, B0=B0, x0=x0)
+    return LQRSystem(
+        name="dc_motor",
+        A_star=A_star,
+        B_star=B_star,
+        Q=Q,
+        R=R_cost,
+        A0=A0,
+        B0=B0,
+        x0=x0,
+    )
 
 
 def make_mass_spring_damper(
@@ -208,9 +233,9 @@ def make_mass_spring_damper(
     mass actuated.  d_x = 2*n_masses, d_u = 1.
     """
     n = n_masses
-    k_s = 1.0   # spring constant
-    c = 0.1     # damping
-    m = 1.0     # mass
+    k_s = 1.0  # spring constant
+    c = 0.1  # damping
+    m = 1.0  # mass
 
     # Stiffness and damping matrices for the chain
     K_mat = jnp.zeros((n, n))
@@ -228,10 +253,12 @@ def make_mass_spring_damper(
     # Continuous: x = [pos; vel], x_dot = [[0, I], [-K/m, -C/m]] x + [[0],[1/m e_1]] u
     Z = jnp.zeros((n, n))
     I_n = jnp.eye(n)
-    Ac = jnp.block([
-        [Z, I_n],
-        [-K_mat / m, -C_mat / m],
-    ])
+    Ac = jnp.block(
+        [
+            [Z, I_n],
+            [-K_mat / m, -C_mat / m],
+        ]
+    )
     Bc_top = jnp.zeros((n, 1))
     Bc_bot = jnp.zeros((n, 1)).at[0, 0].set(1.0 / m)
     Bc = jnp.concatenate([Bc_top, Bc_bot], axis=0)
@@ -245,28 +272,40 @@ def make_mass_spring_damper(
     A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
     return LQRSystem(
         name=f"mass_spring_damper_{n}",
-        A_star=A_star, B_star=B_star, Q=Q, R=R_cost, A0=A0, B0=B0, x0=x0,
+        A_star=A_star,
+        B_star=B_star,
+        Q=Q,
+        R=R_cost,
+        A0=A0,
+        B0=B0,
+        x0=x0,
     )
 
 
-def make_boeing747_lateral(key: jax.Array, dt: float = 0.05, perturbation: float = 0.02) -> LQRSystem:
+def make_boeing747_lateral(
+    key: jax.Array, dt: float = 0.05, perturbation: float = 0.02
+) -> LQRSystem:
     """Boeing 747 lateral/directional dynamics (Skogestad & Postlethwaite).
 
     State: [sideslip, yaw_rate, roll_rate, roll_angle], Input: [rudder, aileron].
     d_x=4, d_u=2.
     """
-    Ac = jnp.array([
-        [-0.0558, -0.9968,  0.0802,  0.0415],
-        [ 0.598,  -0.115,  -0.0318,  0.0],
-        [-3.05,    0.388,  -0.4650,  0.0],
-        [ 0.0,    0.0805,  1.0,      0.0],
-    ])
-    Bc = jnp.array([
-        [ 0.00729,  0.0],
-        [-0.475,    0.00775],
-        [ 0.153,    0.143],
-        [ 0.0,      0.0],
-    ])
+    Ac = jnp.array(
+        [
+            [-0.0558, -0.9968, 0.0802, 0.0415],
+            [0.598, -0.115, -0.0318, 0.0],
+            [-3.05, 0.388, -0.4650, 0.0],
+            [0.0, 0.0805, 1.0, 0.0],
+        ]
+    )
+    Bc = jnp.array(
+        [
+            [0.00729, 0.0],
+            [-0.475, 0.00775],
+            [0.153, 0.143],
+            [0.0, 0.0],
+        ]
+    )
 
     A_star, B_star = _discretize(Ac, Bc, dt)
     Q = jnp.diag(jnp.array([1.0, 1.0, 1.0, 10.0]))
@@ -275,12 +314,20 @@ def make_boeing747_lateral(key: jax.Array, dt: float = 0.05, perturbation: float
     x0 = jnp.array([0.035, 0.0, 0.0, 0.087])
     A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
     return LQRSystem(
-        name="boeing747_lateral", A_star=A_star, B_star=B_star,
-        Q=Q, R=R_cost, A0=A0, B0=B0, x0=x0,
+        name="boeing747_lateral",
+        A_star=A_star,
+        B_star=B_star,
+        Q=Q,
+        R=R_cost,
+        A0=A0,
+        B0=B0,
+        x0=x0,
     )
 
 
-def make_double_integrator(key: jax.Array, dt: float = 0.1, perturbation: float = 0.05) -> LQRSystem:
+def make_double_integrator(
+    key: jax.Array, dt: float = 0.1, perturbation: float = 0.05
+) -> LQRSystem:
     """Classic double integrator (position + velocity, single force input).
 
     d_x=2, d_u=1.  The simplest nontrivial LQR benchmark.
@@ -294,27 +341,39 @@ def make_double_integrator(key: jax.Array, dt: float = 0.1, perturbation: float 
     x0 = jnp.array([1.0, 0.0])
     A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
     return LQRSystem(
-        name="double_integrator", A_star=A_star, B_star=B_star,
-        Q=Q, R=R_cost, A0=A0, B0=B0, x0=x0,
+        name="double_integrator",
+        A_star=A_star,
+        B_star=B_star,
+        Q=Q,
+        R=R_cost,
+        A0=A0,
+        B0=B0,
+        x0=x0,
     )
 
 
-def make_aircraft_pitch(key: jax.Array, dt: float = 0.05, perturbation: float = 0.05) -> LQRSystem:
+def make_aircraft_pitch(
+    key: jax.Array, dt: float = 0.05, perturbation: float = 0.05
+) -> LQRSystem:
     """Longitudinal short-period aircraft pitch dynamics.
 
     State: [angle_of_attack, pitch_rate, pitch_angle], Input: [elevator].
     d_x=3, d_u=1.  From Stevens & Lewis.
     """
-    Ac = jnp.array([
-        [-0.313,  56.7, 0.0],
-        [-0.0139, -0.426, 0.0],
-        [ 0.0,    56.7, 0.0],
-    ])
-    Bc = jnp.array([
-        [ 0.232],
-        [ 0.0203],
-        [ 0.0],
-    ])
+    Ac = jnp.array(
+        [
+            [-0.313, 56.7, 0.0],
+            [-0.0139, -0.426, 0.0],
+            [0.0, 56.7, 0.0],
+        ]
+    )
+    Bc = jnp.array(
+        [
+            [0.232],
+            [0.0203],
+            [0.0],
+        ]
+    )
 
     A_star, B_star = _discretize(Ac, Bc, dt)
     Q = jnp.diag(jnp.array([1.0, 1.0, 10.0]))
@@ -323,21 +382,217 @@ def make_aircraft_pitch(key: jax.Array, dt: float = 0.05, perturbation: float = 
     x0 = jnp.array([0.035, 0.0, 0.087])
     A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
     return LQRSystem(
-        name="aircraft_pitch", A_star=A_star, B_star=B_star,
-        Q=Q, R=R_cost, A0=A0, B0=B0, x0=x0,
+        name="aircraft_pitch",
+        A_star=A_star,
+        B_star=B_star,
+        Q=Q,
+        R=R_cost,
+        A0=A0,
+        B0=B0,
+        x0=x0,
     )
 
 
-def make_magnetic_levitation(key: jax.Array, dt: float = 0.01, perturbation: float = 0.05) -> LQRSystem:
+def make_stable_2d(key: jax.Array, perturbation: float = 0.05) -> LQRSystem:
+    """Stable 2D discrete-time system with a single input.
+
+    State: [x1, x2], Input: [u].  d_x=2, d_u=1.
+    A is upper-triangular with eigenvalues 0.7 and 0.6 (open-loop stable).
+    """
+    A_star = jnp.array(
+        [
+            [0.7, 0.1],
+            [0.0, 0.6],
+        ]
+    )
+    B_star = jnp.array(
+        [
+            [1.0],
+            [0.5],
+        ]
+    )
+
+    Q = jnp.eye(2)
+    R_cost = jnp.eye(1)
+    x0 = jnp.array([1.0, 0.0])
+    A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
+    return LQRSystem(
+        name="stable_2d",
+        A_star=A_star,
+        B_star=B_star,
+        Q=Q,
+        R=R_cost,
+        A0=A0,
+        B0=B0,
+        x0=x0,
+        noise_sigma=0.5,
+    )
+
+
+def make_laplacian(key: jax.Array, perturbation: float = 0.05) -> LQRSystem:
+    """Marginally unstable Laplacian system (Dean et al., 2018; Lale et al., 2022).
+
+    State dim: 3, Input dim: 3.  Weakly connected Laplacian with eigenvalues
+    slightly above 1.  Q = 10*I, R = I, w ~ N(0, I).
+    """
+    A_star = jnp.array(
+        [
+            [1.01, 0.01, 0.0],
+            [0.01, 1.01, 0.01],
+            [0.0, 0.01, 1.01],
+        ]
+    )
+    B_star = jnp.eye(3)
+    Q = 10.0 * jnp.eye(3)
+    R = jnp.eye(3)
+    x0 = jnp.zeros(3)
+    A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
+    return LQRSystem(
+        name="laplacian",
+        A_star=A_star,
+        B_star=B_star,
+        Q=Q,
+        R=R,
+        A0=A0,
+        B0=B0,
+        x0=x0,
+        noise_sigma=0.5,
+    )
+
+
+def make_boeing747_longitudinal(
+    key: jax.Array, perturbation: float = 0.05
+) -> LQRSystem:
+    """Boeing 747 longitudinal flight control (Ishihara et al., 1992; Lale et al., 2022).
+
+    Discrete-time linearized dynamics at 40000 ft, 774 ft/sec, 1-sec discretization.
+    State: [body-axis vel, perp vel, body-horizontal angle, angular vel].
+    Input: [elevator angle, thrust].  d_x=4, d_u=2.  Q = I, R = I, w ~ N(0, I).
+    """
+    A_star = jnp.array(
+        [
+            [0.99, 0.03, -0.02, -0.32],
+            [0.01, 0.47, 4.70, 0.0],
+            [0.02, -0.06, 0.40, 0.0],
+            [0.01, -0.04, 0.72, 0.99],
+        ]
+    )
+    B_star = jnp.array(
+        [
+            [0.01, 0.99],
+            [-3.44, 1.66],
+            [-0.83, 0.44],
+            [-0.47, 0.25],
+        ]
+    )
+    Q = jnp.eye(4)
+    R = jnp.eye(2)
+    x0 = jnp.zeros(4)
+    A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
+    return LQRSystem(
+        name="boeing747_longitudinal",
+        A_star=A_star,
+        B_star=B_star,
+        Q=Q,
+        R=R,
+        A0=A0,
+        B0=B0,
+        x0=x0,
+        noise_sigma=1.0,
+    )
+
+
+def make_uav_2d(key: jax.Array, perturbation: float = 0.05) -> LQRSystem:
+    """UAV operating in a 2-D plane (Zhao et al., 2021; Lale et al., 2022).
+
+    Double-integrator model.  State: [pos_x, vel_x, pos_y, vel_y].
+    Input: [accel_x, accel_y].  d_x=4, d_u=2.
+    Q = diag(1, 0.1, 2, 0.2), R = I, w ~ N(0, I).
+    """
+    A_star = jnp.array(
+        [
+            [1.0, 0.5, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.5],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    )
+    B_star = jnp.array(
+        [
+            [0.125, 0.0],
+            [0.5, 0.0],
+            [0.0, 0.125],
+            [0.0, 0.5],
+        ]
+    )
+    Q = jnp.diag(jnp.array([1.0, 0.1, 2.0, 0.2]))
+    R = jnp.eye(2)
+    x0 = jnp.zeros(4)
+    A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
+    return LQRSystem(
+        name="uav_2d",
+        A_star=A_star,
+        B_star=B_star,
+        Q=Q,
+        R=R,
+        A0=A0,
+        B0=B0,
+        x0=x0,
+        noise_sigma=1.0,
+    )
+
+
+def make_stabilizable_not_controllable(
+    key: jax.Array, perturbation: float = 0.05
+) -> LQRSystem:
+    """Stabilizable but not controllable system (Lale et al., 2022).
+
+    The third state is uncontrollable (B has zero row) but stable (eigenvalue 0.5).
+    d_x=3, d_u=2.  Q = I, R = I, w ~ N(0, I).
+    """
+    A_star = jnp.array(
+        [
+            [-2.0, 0.0, 1.1],
+            [1.5, 0.9, 1.3],
+            [0.0, 0.0, 0.5],
+        ]
+    )
+    B_star = jnp.array(
+        [
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.0, 0.0],
+        ]
+    )
+    Q = jnp.eye(3)
+    R = jnp.eye(2)
+    x0 = jnp.zeros(3)
+    A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
+    return LQRSystem(
+        name="stabilizable_not_controllable",
+        A_star=A_star,
+        B_star=B_star,
+        Q=Q,
+        R=R,
+        A0=A0,
+        B0=B0,
+        x0=x0,
+        noise_sigma=1.0,
+    )
+
+
+def make_magnetic_levitation(
+    key: jax.Array, dt: float = 0.01, perturbation: float = 0.05
+) -> LQRSystem:
     """Linearized magnetic levitation (ball suspension).
 
     State: [position, velocity, current], Input: [voltage].  d_x=3, d_u=1.
     Linearized about the operating point where the ball hovers.
     """
-    m = 0.05     # ball mass [kg]
+    m = 0.05  # ball mass [kg]
     g = 9.81
     R_coil = 1.0  # coil resistance
-    L = 0.01     # coil inductance
+    L = 0.01  # coil inductance
     C_mag = 1e-4  # magnetic force constant
     x0_eq = 0.01  # equilibrium gap
     i0_eq = jnp.sqrt(m * g * x0_eq**2 / C_mag)  # equilibrium current
@@ -345,16 +600,20 @@ def make_magnetic_levitation(key: jax.Array, dt: float = 0.01, perturbation: flo
     a21 = 2.0 * C_mag * i0_eq**2 / (m * x0_eq**3)
     a23 = -2.0 * C_mag * i0_eq / (m * x0_eq**2)
 
-    Ac = jnp.array([
-        [0.0, 1.0, 0.0],
-        [a21, 0.0, a23],
-        [0.0, 0.0, -R_coil / L],
-    ])
-    Bc = jnp.array([
-        [0.0],
-        [0.0],
-        [1.0 / L],
-    ])
+    Ac = jnp.array(
+        [
+            [0.0, 1.0, 0.0],
+            [a21, 0.0, a23],
+            [0.0, 0.0, -R_coil / L],
+        ]
+    )
+    Bc = jnp.array(
+        [
+            [0.0],
+            [0.0],
+            [1.0 / L],
+        ]
+    )
 
     A_star, B_star = _discretize(Ac, Bc, dt)
     Q = jnp.diag(jnp.array([100.0, 1.0, 0.1]))
@@ -363,8 +622,14 @@ def make_magnetic_levitation(key: jax.Array, dt: float = 0.01, perturbation: flo
     x0 = jnp.array([0.001, 0.0, 0.0])
     A0, B0 = _perturb_prior(A_star, B_star, key, perturbation)
     return LQRSystem(
-        name="magnetic_levitation", A_star=A_star, B_star=B_star,
-        Q=Q, R=R_cost, A0=A0, B0=B0, x0=x0,
+        name="magnetic_levitation",
+        A_star=A_star,
+        B_star=B_star,
+        Q=Q,
+        R=R_cost,
+        A0=A0,
+        B0=B0,
+        x0=x0,
     )
 
 
@@ -373,7 +638,9 @@ def make_magnetic_levitation(key: jax.Array, dt: float = 0.01, perturbation: flo
 # ---------------------------------------------------------------------------
 
 
-def get_integrator_systems(key: jax.Array, perturbation: float = 0.01) -> list[LQRSystem]:
+def get_integrator_systems(
+    key: jax.Array, perturbation: float = 0.01
+) -> list[LQRSystem]:
     """Return 10 integrator-chain systems with state dims 2, 4, 6, ..., 20."""
     dt = 0.1
     dims = [
@@ -398,19 +665,37 @@ def get_integrator_systems(key: jax.Array, perturbation: float = 0.01) -> list[L
 
 def get_physical_systems(key: jax.Array, perturbation: float = 0.05) -> list[LQRSystem]:
     """Return a suite of classic physical LQR benchmark systems."""
-    keys = jax.random.split(key, 7)
+    keys = jax.random.split(key, 8)
     return [
-        make_double_integrator(keys[0], perturbation=perturbation),
-        make_dc_motor(keys[1], perturbation=perturbation),
-        make_cart_pole(keys[2], perturbation=perturbation),
-        make_aircraft_pitch(keys[3], perturbation=perturbation),
-        make_boeing747_lateral(keys[4], perturbation=perturbation),
-        make_mass_spring_damper(3, keys[5], perturbation=perturbation),
-        make_magnetic_levitation(keys[6], perturbation=perturbation),
+        make_stable_2d(keys[0], perturbation=perturbation),
+        make_double_integrator(keys[1], perturbation=perturbation),
+        make_dc_motor(keys[2], perturbation=perturbation),
+        make_cart_pole(keys[3], perturbation=perturbation),
+        make_aircraft_pitch(keys[4], perturbation=perturbation),
+        make_boeing747_lateral(keys[5], perturbation=perturbation),
+        make_mass_spring_damper(3, keys[6], perturbation=perturbation),
+        make_magnetic_levitation(keys[7], perturbation=perturbation),
     ]
 
 
-def get_benchmark_systems(key: jax.Array, perturbation: float = 0.05) -> list[LQRSystem]:
-    """Return all benchmark systems (physical + integrator chains)."""
-    key1, key2 = jax.random.split(key)
-    return get_physical_systems(key1, perturbation) + get_integrator_systems(key2, perturbation)
+def get_stabl_systems(key: jax.Array, perturbation: float = 0.05) -> list[LQRSystem]:
+    """Return the four benchmark systems from Lale et al. (2022) StabL paper."""
+    keys = jax.random.split(key, 4)
+    return [
+        make_laplacian(keys[0], perturbation=perturbation),
+        make_boeing747_longitudinal(keys[1], perturbation=perturbation),
+        make_uav_2d(keys[2], perturbation=perturbation),
+        make_stabilizable_not_controllable(keys[3], perturbation=perturbation),
+    ]
+
+
+def get_benchmark_systems(
+    key: jax.Array, perturbation: float = 0.05
+) -> list[LQRSystem]:
+    """Return all benchmark systems (physical + stabl + integrator chains)."""
+    key1, key2, key3 = jax.random.split(key, 3)
+    return (
+        get_physical_systems(key1, perturbation)
+        + get_stabl_systems(key2, perturbation)
+        + get_integrator_systems(key3, perturbation)
+    )

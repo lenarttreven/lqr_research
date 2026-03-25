@@ -80,12 +80,19 @@ def simulate(
         lambda K: lqr_avg_stage_cost(A, B, Q, R, K, noise_sigma)
     )(gains)  # (T,)
 
+    # Cumulative controller update count: detect when K changes between steps
+    K_init = algo.init_state(dx, du, Q, R).K
+    K_prev = jnp.concatenate([K_init[None], gains[:-1]], axis=0)  # (T, du, dx)
+    k_changed = jnp.any(gains != K_prev, axis=(-2, -1))  # (T,)
+    cum_updates = jnp.cumsum(k_changed)  # (T,)
+
     return {
         "costs": costs,  # (T,)
         "regrets": regrets,  # (T,)
         "expected_costs": expected_costs,  # (T,)
         "optimal_cost": optimal_cost,
         "k_star": k_star,  # (du, dx)
+        "cum_updates": cum_updates,  # (T,)
     }
 
 
@@ -118,37 +125,59 @@ def plot_results(
     log_y: bool = False,
     save_path: str | None = None,
 ) -> None:
-    """Plot cumulative regret and per-step excess cost (2 subplots).
+    """Plot cumulative regret, per-step excess cost, and controller updates (3 subplots).
 
     Args:
         results_dict: {algo_name: results} where results comes from simulate_many.
         title: Overall figure title.
-        log_y: If True, use logarithmic y-axis on both subplots.
+        log_y: If True, use logarithmic y-axis on regret and cost subplots.
         save_path: If provided, save the figure to this path.
     """
+    has_updates = any("cum_updates" in res for res in results_dict.values())
+    n_plots = 3 if has_updates else 2
+    fig, axes = plt.subplots(1, n_plots, figsize=(6 * n_plots, 4))
+    ax_regret, ax_cost = axes[0], axes[1]
+    ax_updates = axes[2] if has_updates else None
+
     linestyles = ["-", "--", ":", "-."]
-    fig, (ax_regret, ax_cost) = plt.subplots(1, 2, figsize=(12, 4))
 
     for i, (name, results) in enumerate(results_dict.items()):
         ls = linestyles[i % len(linestyles)]
         t = jnp.arange(results["regrets"].shape[1])
 
-        # Cumulative regret
+        # Cumulative regret (clip extreme values to keep plotting stable)
         cum = jnp.cumsum(results["regrets"], axis=1)  # (num_trials, T)
+        cum = jnp.clip(cum, a_min=-1e30, a_max=1e30)
         q20, q50, q80 = jnp.quantile(cum, jnp.array([0.2, 0.5, 0.8]), axis=0)
         ax_regret.plot(t, q50, label=name, linestyle=ls)
         ax_regret.fill_between(t, q20, q80, alpha=0.15)
 
         # Expected per-step cost minus optimal cost
         excess = results["expected_costs"] - results["optimal_cost"][:, None]  # (num_trials, T)
+        excess = jnp.clip(excess, a_min=-1e30, a_max=1e30)
         q20, q50, q80 = jnp.quantile(excess, jnp.array([0.2, 0.5, 0.8]), axis=0)
         ax_cost.plot(t, q50, label=name, linestyle=ls)
         ax_cost.fill_between(t, q20, q80, alpha=0.15)
 
+        # Cumulative controller updates
+        if ax_updates is not None and "cum_updates" in results:
+            updates = results["cum_updates"]  # (num_trials, T)
+            q20, q50, q80 = jnp.quantile(updates, jnp.array([0.2, 0.5, 0.8]), axis=0)
+            ax_updates.plot(t, q50, label=name, linestyle=ls)
+            ax_updates.fill_between(t, q20, q80, alpha=0.15)
+
     if log_y:
         ax_regret.set_yscale("log")
         ax_cost.set_yscale("log")
-    for ax in (ax_regret, ax_cost):
+        # Clamp y-limits to avoid overflow in log tick formatter
+        for ax in (ax_regret, ax_cost):
+            ymin, ymax = ax.get_ylim()
+            if not jnp.isfinite(ymax) or ymax > 1e300:
+                ax.set_ylim(top=1e300)
+            if not jnp.isfinite(ymin) or ymin <= 0:
+                ax.set_ylim(bottom=1e-1)
+
+    for ax in axes:
         ax.set_xlabel("Time step")
         ax.grid()
 
@@ -156,6 +185,9 @@ def plot_results(
     ax_regret.set_title("Cumulative Regret")
     ax_cost.set_ylabel("Expected Cost − Optimal Cost")
     ax_cost.set_title("Expected Per-Step Excess Cost")
+    if ax_updates is not None:
+        ax_updates.set_ylabel("Cumulative Updates")
+        ax_updates.set_title("Controller Updates")
 
     if title:
         fig.suptitle(title)

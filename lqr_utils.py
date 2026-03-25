@@ -55,6 +55,11 @@ def _symmetrize(M: jax.Array) -> jax.Array:
     return 0.5 * (M + M.T)
 
 
+def _solve_psd(A: jax.Array, B: jax.Array) -> jax.Array:
+    """Solve A x = B where A is symmetric positive definite."""
+    return jax.scipy.linalg.solve(A, B, assume_a="sym")
+
+
 def _right_solve(X: jax.Array, M: jax.Array) -> jax.Array:
     """Return X @ M^{-1} without forming the inverse."""
     return jnp.linalg.solve(M.T, X.T).T
@@ -174,9 +179,73 @@ def _dlqr_riccati(
     return K, P
 
 
+@jax.jit
+def _dlqr_schur(
+    A: Float[Array, "dx dx"],
+    B: Float[Array, "dx du"],
+    H: Float[Array, "dxu dxu"],
+    max_iters: int = 1,
+    tol: float = 1e-8,
+) -> tuple[Float[Array, "du dx"], Float[Array, "dx dx"]]:
+    """Solve discrete LQR via Schur decomposition from joint cost matrix H = [[Q, S], [S^T, R]]."""
+    n = A.shape[0]
+
+    Q = _symmetrize(H[:n, :n])
+    S = H[:n, n:]
+    R = _symmetrize(H[n:, n:])
+
+    # Complete the square to remove cross term.
+    Rinv_ST = _solve_psd(R, S.T)              # (du, dx)
+    Abar = A - B @ Rinv_ST                    # (dx, dx)
+    Qbar = _symmetrize(Q - S @ Rinv_ST)       # (dx, dx)
+
+    # G = B R^{-1} B^T
+    Rinv_BT = _solve_psd(R, B.T)              # (du, dx)
+    G = _symmetrize(B @ Rinv_BT)              # (dx, dx)
+
+    # Build symplectic matrix Z = N^{-1} L for the standard DARE, where
+    #   L = [[Abar, 0], [-Qbar, I]],  N = [[I, G], [0, Abar']].
+    # The eigenvalues of Z are reciprocals of the DARE's symplectic eigenvalues,
+    # so the stabilizing solution corresponds to the OUTSIDE-unit-circle subspace.
+    Abar_inv = jnp.linalg.inv(Abar)
+
+    Z11 = Abar_inv
+    Z12 = Abar_inv @ G
+    Z21 = Qbar @ Abar_inv
+    Z22 = Abar.T + Qbar @ Abar_inv @ G
+    Z = jnp.block([[Z11, Z12],
+                   [Z21, Z22]])
+
+    # Complex Schur decomposition; select eigenvalues OUTSIDE unit circle.
+    T, U = jax.scipy.linalg.schur(Z, output="complex")
+    eigs = jnp.diag(T)
+
+    mags = jnp.abs(eigs)
+    perm = jnp.argsort(-mags)  # descending: large eigenvalues first
+    U = U[:, perm]
+
+    U1 = U[:n, :n]
+    U2 = U[n:, :n]
+
+    # Recover Riccati solution.
+    P = U2 @ jnp.linalg.inv(U1)
+    P = _symmetrize(jnp.real(P))
+
+    # Conditioning check — return NaN if U1 is nearly singular.
+    cond_u1 = jnp.linalg.cond(U1)
+    P = jnp.where(cond_u1 < 1.0 / tol, P, jnp.full_like(P, jnp.nan))
+
+    # Recover gain for original problem with cross term S.
+    Gk = _symmetrize(R + B.T @ P @ B)
+    K = -_solve_psd(Gk, B.T @ P @ A + S.T)
+
+    return K, P
+
+
 _SOLVERS = {
     "sda": _dlqr_sda,
     "riccati": _dlqr_riccati,
+    "schur": _dlqr_schur,
 }
 
 
@@ -202,7 +271,7 @@ def dlqr_joint(
     """
     fn = _SOLVERS[solver]
     if max_iters is None:
-        max_iters = 100 if solver == "sda" else 200
+        max_iters = {"sda": 100, "riccati": 200, "schur": 1}.get(solver, 100)
     return fn(A, B, H, max_iters=max_iters, tol=tol)
 
 
