@@ -138,14 +138,18 @@ def plot_results(
     """
     linestyles = ["-", "--", ":", "-."]
 
-    # Adjust columns and figure size based on whether we plot the cost
-    ncols = 2 if plot_cost else 1
-    figsize = (12, 4) if plot_cost else (6.5, 4)
+    # Adjust columns and figure size based on optional panels
+    ncols = 1 + int(plot_cost) + 1  # regret + (cost?) + updates
+    figsize = (6.5 * ncols, 4)
 
     # squeeze=False ensures `axes` is always a 2D array, avoiding unpacking errors
     fig, axes = plt.subplots(1, ncols, figsize=figsize, squeeze=False)
-    ax_regret = axes[0, 0]
-    ax_cost = axes[0, 1] if plot_cost else None
+    col = 0
+    ax_regret = axes[0, col]; col += 1
+    ax_cost = axes[0, col] if plot_cost else None
+    if plot_cost:
+        col += 1
+    ax_updates = axes[0, col]
 
     for i, (name, results) in enumerate(results_dict.items()):
         ls = linestyles[i % len(linestyles)]
@@ -167,8 +171,17 @@ def plot_results(
             ax_cost.plot(t, q50, label=name, linestyle=ls)
             ax_cost.fill_between(t, q20, q80, alpha=0.15)
 
+        # Cumulative controller updates
+        cum_upd = results["cum_updates"]  # (num_trials, T)
+        q20, q50, q80 = jnp.quantile(cum_upd, jnp.array([0.2, 0.5, 0.8]), axis=0)
+        ax_updates.plot(t, q50, label=name, linestyle=ls)
+        ax_updates.fill_between(t, q20, q80, alpha=0.15)
+
     # Formatting active axes
-    active_axes = [ax_regret, ax_cost] if plot_cost else [ax_regret]
+    active_axes = [ax_regret]
+    if plot_cost:
+        active_axes.append(ax_cost)
+    active_axes.append(ax_updates)
 
     if log_y:
         for ax in active_axes:
@@ -184,6 +197,9 @@ def plot_results(
     if plot_cost:
         ax_cost.set_ylabel("Expected Cost − Optimal Cost")
         ax_cost.set_title("Expected Per-Step Excess Cost")
+
+    ax_updates.set_ylabel("Controller Updates")
+    ax_updates.set_title("Cumulative Controller Updates")
 
     if title:
         fig.suptitle(title)

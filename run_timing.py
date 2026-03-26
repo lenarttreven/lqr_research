@@ -17,6 +17,7 @@ Usage:
 
 import argparse
 import os
+import pickle
 
 import jax
 
@@ -54,27 +55,24 @@ def time_on_system(
     """Run all algorithms on a single system, return results with timing."""
 
     algos = {
-        "IR-LQR": IRLQR(
-            lam=lam, beta=0.05, use_invsqrt=False, A0=system.A0, B0=system.B0
-        ),
-        "Thompson Sampling": TS(lam=lam, beta=0.05, A0=system.A0, B0=system.B0),
-        "CEC (doubling)": CEC(lam=lam, A0=system.A0, B0=system.B0),
-        "CEC + PE (doubling)": CECPE(
-            lam=lam, init_act_std=1.0, A0=system.A0, B0=system.B0
-        ),
-        "LAGLQ": LAGLQ(
+        "IR-LQR": IRLQR(lam=lam, beta=1, use_invsqrt=False, A0=system.A0, B0=system.B0),
+        "TS": TS(lam=lam, beta=1e-3, A0=system.A0, B0=system.B0),
+        "CEC": CEC(lam=lam, A0=system.A0, B0=system.B0),
+        "CEC+PE": CECPE(lam=lam, init_act_std=1.0, A0=system.A0, B0=system.B0),
+        "LagLQ": LAGLQ(
             lam=lam,
-            beta=laglq_beta,
+            beta=1e-3,
             eps=laglq_eps,
             max_dual_iters=laglq_max_dual_iters,
             A0=system.A0,
             B0=system.B0,
-            penalty_aux=1e2,
+            penalty_aux=1e4,
+            solver="sda",
         ),
         "OSLO": OSLO(
-            mu=oslo_mu,
+            mu=1e-3,
             lam=lam,
-            beta=oslo_beta,
+            beta=1.0,
             sigma=system.noise_sigma,
             A0=system.A0,
             B0=system.B0,
@@ -169,7 +167,9 @@ def main():
     parser.add_argument("--num-steps", type=int, default=1_000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
-        "--suite", type=str, default="all",
+        "--suite",
+        type=str,
+        default="all",
         choices=["all", "physical", "integrator"],
     )
     parser.add_argument("--systems", type=int, nargs="*", default=None)
@@ -193,6 +193,7 @@ def main():
 
     indices = args.systems if args.systems is not None else list(range(len(systems)))
 
+    all_results = {}
     for idx in indices:
         system = systems[idx]
         d_x = system.A_star.shape[0]
@@ -213,12 +214,31 @@ def main():
             laglq_eps=args.laglq_eps,
             laglq_max_dual_iters=args.laglq_max_dual_iters,
         )
+        all_results[system.name] = results
 
         fig_dir = "figures"
         os.makedirs(fig_dir, exist_ok=True)
         safe_name = system.name.replace(" ", "_").replace("/", "_")
         save_path = os.path.join(fig_dir, f"timing_{safe_name}.pdf")
         plot_timing(results, title=f"{system.name}", save_path=save_path)
+
+    # Save results to disk
+    results_dir = "results"
+    os.makedirs(results_dir, exist_ok=True)
+    # Convert JAX arrays to numpy for serialization
+    serializable = {}
+    for sys_name, res in all_results.items():
+        serializable[sys_name] = {}
+        for algo_name, algo_res in res.items():
+            serializable[sys_name][algo_name] = {
+                k: (np.array(v) if hasattr(v, "shape") else v)
+                for k, v in algo_res.items()
+            }
+    save_data = {"args": vars(args), "results": serializable}
+    save_file = os.path.join(results_dir, f"timing_{args.suite}.pkl")
+    with open(save_file, "wb") as f:
+        pickle.dump(save_data, f)
+    print(f"\nResults saved to {save_file}")
 
 
 if __name__ == "__main__":

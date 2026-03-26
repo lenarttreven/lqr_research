@@ -105,7 +105,7 @@ def run_on_system(
     num_steps: int,
     key: jax.Array,
     lam: float = 0.1,
-    oslo_mu: float = 0.1,
+    oslo_mu: float = 1.0,
     oslo_beta: float = 1.0,
     laglq_beta: float = 0.05,
     laglq_eps: float = 1e-2,
@@ -115,30 +115,30 @@ def run_on_system(
     """Run all algorithms on a single system, return results dict."""
 
     scan_algos = {
-        "IR-LQR": IRLQR(lam=lam, beta=2, use_invsqrt=False, A0=system.A0, B0=system.B0),
-        "TS": TS(lam=lam, beta=0.05, A0=system.A0, B0=system.B0),
+        "IR-LQR": IRLQR(lam=lam, beta=1, use_invsqrt=False, A0=system.A0, B0=system.B0),
+        "TS": TS(lam=lam, beta=1e-3, A0=system.A0, B0=system.B0),
         "CEC": CEC(lam=lam, A0=system.A0, B0=system.B0),
         "CEC+PE": CECPE(lam=lam, init_act_std=1.0, A0=system.A0, B0=system.B0),
         "LagLQ": LAGLQ(
             lam=lam,
-            beta=laglq_beta,
+            beta=1e-3,
             eps=laglq_eps,
             max_dual_iters=laglq_max_dual_iters,
             A0=system.A0,
             B0=system.B0,
-            penalty_aux=1.0,
+            penalty_aux=1e4,
             solver=solver,
         ),
     }
     oslo_algos = {
-        # "OSLO": OSLO(
-        #     mu=oslo_mu,
-        #     lam=lam,
-        #     beta=oslo_beta,
-        #     sigma=system.noise_sigma,
-        #     A0=system.A0,
-        #     B0=system.B0,
-        # ),
+        "OSLO": OSLO(
+            mu=1e-3,
+            lam=lam,
+            beta=1.0,
+            sigma=system.noise_sigma,
+            A0=system.A0,
+            B0=system.B0,
+        ),
     }
 
     keys = jax.random.split(key, num_trials)
@@ -239,7 +239,7 @@ def main():
         type=str,
         default="sda",
         choices=["schur", "sda", "riccati"],
-        help="DARE solver to use. Default: schur.",
+        help="DARE solver to use. Default: sda.",
     )
     parser.add_argument(
         "--output-dir",

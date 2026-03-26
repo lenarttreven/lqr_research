@@ -394,12 +394,19 @@ def simulate_oslo(
         lambda K: lqr_avg_stage_cost(A, B, Q, R, K, noise_sigma)
     )(gains_arr)  # (T,)
 
+    # Cumulative controller update count: detect when K changes between steps
+    K_init = algo.init_state(dx, du, Q, R).K
+    K_prev = jnp.concatenate([K_init[None], gains_arr[:-1]], axis=0)  # (T, du, dx)
+    k_changed = jnp.any(gains_arr != K_prev, axis=(-2, -1))  # (T,)
+    cum_updates = jnp.cumsum(k_changed)  # (T,)
+
     return {
         "costs": jnp.array(costs),
         "regrets": jnp.array(regrets),
         "expected_costs": expected_costs,
         "optimal_cost": optimal_cost,
         "k_star": k_star,
+        "cum_updates": cum_updates,
     }
 
 
@@ -439,4 +446,5 @@ def simulate_oslo_many(
         "expected_costs": jnp.stack([r["expected_costs"] for r in all_results]),
         "optimal_cost": jnp.stack([r["optimal_cost"] for r in all_results]),
         "k_star": jnp.stack([r["k_star"] for r in all_results]),
+        "cum_updates": jnp.stack([r["cum_updates"] for r in all_results]),
     }

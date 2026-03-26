@@ -390,6 +390,7 @@ def make_aircraft_pitch(
         A0=A0,
         B0=B0,
         x0=x0,
+        noise_sigma=0.01,
     )
 
 
