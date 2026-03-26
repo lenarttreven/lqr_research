@@ -51,11 +51,11 @@ def main() -> None:
 
     # -- Define algorithms --
     scan_algos = {
-        "IR-LQR (V^{-1})": IRLQR(lam=1.0, beta=0.05, use_invsqrt=False, A0=A0, B0=B0),
-        "Thompson Sampling": TS(lam=1.0, beta=0.05, A0=A0, B0=B0),
-        "CEC (doubling)": CEC(lam=1.0, A0=A0, B0=B0),
-        "CEC + PE (doubling)": CECPE(lam=1.0, init_act_std=1.0, A0=A0, B0=B0),
-        "LAGLQ": LAGLQ(
+        "IR-LQR": IRLQR(lam=1.0, beta=0.05, use_invsqrt=False, A0=A0, B0=B0),
+        "TS": TS(lam=1.0, beta=0.05, A0=A0, B0=B0),
+        "CEC": CEC(lam=1.0, A0=A0, B0=B0),
+        "CEC+PE": CECPE(lam=1.0, init_act_std=1.0, A0=A0, B0=B0),
+        "LagLQ": LAGLQ(
             lam=1.0,
             beta=1.0,
             eps=1e-4,
