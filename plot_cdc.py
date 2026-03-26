@@ -323,6 +323,9 @@ def plot_benchmark_file(
 
     if title:
         fig.suptitle("Aircraft pitch", fontsize=FIGURE_TITLE_FONT_SIZE)
+        legendpos = 0.88
+    else:
+        legendpos = 1.01
 
     fig.tight_layout(rect=[0, 0, 1, 0.88])
     handles, labels = ax_regret.get_legend_handles_labels()
@@ -331,7 +334,7 @@ def plot_benchmark_file(
         labels,
         loc="upper center",
         ncol=6,
-        bbox_to_anchor=(0.5, 0.88),
+        bbox_to_anchor=(0.5, legendpos),
         fontsize=LEGEND_FONT_SIZE,
     )
 
