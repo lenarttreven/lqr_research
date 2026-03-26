@@ -189,6 +189,36 @@ results = simulate_many(
 
 `results["regrets"]` contains one regret trajectory per trial.
 
+### Reproduce the CDC paper figure
+
+To generate the figure from scratch (no pre-existing benchmark or timing data):
+
+```bash
+# Step 1: Run the benchmark for the aircraft_pitch system
+python run_benchmark.py --systems 4 --output-dir results
+
+# Step 2: Run the timing benchmark for the same system
+python run_timing.py --systems 4
+
+# Step 3: Plot the figure
+python plot_cdc.py \
+  --file results/aircraft_pitch.npz \
+  --timing-file results/timing_physical.pkl \
+  --save-path figures/cdc_aircraft_pitch.pdf
+```
+
+To just view the plot interactively (without saving):
+
+```bash
+python plot_cdc.py --file results/aircraft_pitch.npz --timing-file results/timing_physical.pkl
+```
+
+If you only want the regret and controller-update panels (no timing bar chart), omit `--timing-file`:
+
+```bash
+python plot_cdc.py --file results/aircraft_pitch.npz
+```
+
 ## Repository Layout
 
 - `run_experiment.py`: small example experiment
