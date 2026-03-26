@@ -195,10 +195,10 @@ To generate the figure from scratch (no pre-existing benchmark or timing data):
 
 ```bash
 # Step 1: Run the benchmark for the aircraft_pitch system
-python run_benchmark.py --systems 4 --output-dir results
+python run_benchmark.py --suite physical --system 4 --num-trials 40 --num-steps 200 --lam 20 --perturbation 0.01 --solver sda
 
 # Step 2: Run the timing benchmark for the same system
-python run_timing.py --systems 4
+python run_timing.py --suite physical --system 4 --num-steps 200 --lam 20 --perturbation 0.01
 
 # Step 3: Plot the figure
 python plot_cdc.py \
