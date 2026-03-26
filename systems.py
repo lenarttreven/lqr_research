@@ -227,7 +227,7 @@ def make_mass_spring_damper(
     dt: float = 0.05,
     perturbation: float = 0.05,
 ) -> LQRSystem:
-    """Coupled mass-spring-damper chain (Dean & Mania et al. style).
+    """Coupled mass-spring-damper chain.
 
     n_masses masses coupled by springs and dampers in series, with the first
     mass actuated.  d_x = 2*n_masses, d_u = 1.
@@ -356,7 +356,8 @@ def make_aircraft_pitch(
     key: jax.Array, dt: float = 0.05, perturbation: float = 0.05
 ) -> LQRSystem:
     """Longitudinal short-period aircraft pitch dynamics.
-
+    https://ctms.engin.umich.edu/CTMS/?example=AircraftPitch&section=SystemModeling
+    
     State: [angle_of_attack, pitch_rate, pitch_angle], Input: [elevator].
     d_x=3, d_u=1.  From Stevens & Lewis.
     """
