@@ -322,6 +322,7 @@ def make_boeing747_lateral(
         A0=A0,
         B0=B0,
         x0=x0,
+        noise_sigma=0.1,
     )
 
 
@@ -357,7 +358,7 @@ def make_aircraft_pitch(
 ) -> LQRSystem:
     """Longitudinal short-period aircraft pitch dynamics.
     https://ctms.engin.umich.edu/CTMS/?example=AircraftPitch&section=SystemModeling
-    
+
     State: [angle_of_attack, pitch_rate, pitch_angle], Input: [elevator].
     d_x=3, d_u=1.  From Stevens & Lewis.
     """
@@ -458,7 +459,7 @@ def make_laplacian(key: jax.Array, perturbation: float = 0.05) -> LQRSystem:
         A0=A0,
         B0=B0,
         x0=x0,
-        noise_sigma=0.5,
+        noise_sigma=1.0,
     )
 
 
@@ -540,7 +541,7 @@ def make_uav_2d(key: jax.Array, perturbation: float = 0.05) -> LQRSystem:
         A0=A0,
         B0=B0,
         x0=x0,
-        noise_sigma=1.0,
+        noise_sigma=0.2,
     )
 
 

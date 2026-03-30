@@ -20,3 +20,8 @@ venv/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Results and figures
+*.pdf
+*.npz
+*.pkl

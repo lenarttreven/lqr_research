@@ -23,7 +23,8 @@ class CECPEState(NamedTuple):
     S:           Float[Array, "dx dxu"]    RLS cross-correlation
     H:           Float[Array, "dxu dxu"]   joint cost matrix (cached)
     next_update: int                        next time step to trigger update
-    act_std:     Float[Array, ""]          current exploration noise std
+    act_std:     Float[Array, ""]          time-varying exploration noise std
+    act_scale:   Float[Array, ""]          constant exploration noise scale
     A0:          Float[Array, "dx dx"]     initial estimate of A
     B0:          Float[Array, "dx du"]     initial estimate of B
     lam:         Float[Array, ""]          RLS regularization
@@ -35,6 +36,7 @@ class CECPEState(NamedTuple):
     H: jax.Array
     next_update: jax.Array
     act_std: jax.Array
+    act_scale: jax.Array
     A0: jax.Array
     B0: jax.Array
     lam: jax.Array
@@ -45,7 +47,7 @@ class CECPE(LQRAlgorithm):
 
     Args:
         lam:          RLS regularization parameter.
-        init_act_std: initial exploration noise standard deviation.
+        init_act_std: constant multiplier for the exploration noise schedule.
     """
 
     def __init__(
@@ -86,7 +88,8 @@ class CECPE(LQRAlgorithm):
             S=S,
             H=H,
             next_update=jnp.array(1, dtype=jnp.int32),
-            act_std=jnp.array(self.init_act_std, dtype=Q.dtype),
+            act_std=jnp.array(1.0, dtype=Q.dtype),
+            act_scale=jnp.array(self.init_act_std, dtype=Q.dtype),
             A0=A0,
             B0=B0,
             lam=jnp.array(self.lam, dtype=Q.dtype),
@@ -100,7 +103,7 @@ class CECPE(LQRAlgorithm):
     ) -> tuple[Float[Array, "du"], CECPEState]:
         """Action u = K @ x + exploration noise."""
         du = state.K.shape[0]
-        eta = state.act_std * jax.random.normal(
+        eta = (state.act_scale * state.act_std) * jax.random.normal(
             key, shape=(du,), dtype=x.dtype
         )  # (du,)
         u = (state.K @ x).reshape((du,)) + eta  # (du,)

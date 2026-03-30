@@ -50,12 +50,11 @@ mpl.rcParams["xtick.labelsize"] = TICKS_SIZE
 mpl.rcParams["ytick.labelsize"] = TICKS_SIZE
 
 DEFAULT_FILE = Path("results/aircraft_pitch.npz")
-DEFAULT_ALGO_ORDER = ("IR-LQR", "TS", "CEC", "CEC+PE", "LagLQ", "OSLO")
+DEFAULT_ALGO_ORDER = ("IR-LQR", "TS", "CEC+PE", "LagLQ", "OSLO")
 DEFAULT_LINESTYLES = ("-", "--", ":", "-.")
 ALGORITHM_STYLES = {
-    "IR-LQR": {"label": "IR-LQR"},
+    "IR-LQR": {"label": "IR-LQR (OURS)"},
     "TS": {"label": "TS"},
-    "CEC": {"label": "CEC"},
     "CEC+PE": {"label": "CEC+PE"},
     "LagLQ": {"label": "LagLQ"},
     "OSLO": {"label": "OSLO"},
@@ -117,31 +116,6 @@ def quantile_band(
         axis=0,
     )
     return lower, median, upper
-
-
-# def configure_matplotlib(show: bool):
-#     """Import matplotlib with a backend suited to the requested mode."""
-#     import matplotlib
-
-#     if not show:
-#         matplotlib.use("Agg")
-
-#     matplotlib.rcParams.update(
-#         {
-#             "axes.grid": True,
-#             "axes.spines.top": False,
-#             "axes.spines.right": False,
-#             "grid.alpha": 0.25,
-#             "grid.linestyle": "--",
-#             "legend.frameon": False,
-#             "lines.linewidth": 2.0,
-#             "font.size": 11,
-#         }
-#     )
-
-#     import matplotlib.pyplot as plt
-
-#     return plt
 
 
 def load_timing_pkl(

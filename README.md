@@ -7,7 +7,6 @@ Implemented algorithms:
 - Intrinsic Reward LQR (IR-LQR, ours)
 - Thompson Sampling (TS, https://arxiv.org/pdf/1703.08972)
 - Certainty Equivalent Control with Persistent Exication (CEC+PE, https://arxiv.org/pdf/2001.09576)
-- CEC: the same as CEC+PE but without noise injection.
 - Optimistic LQR via Lagrangian Relaxation (LagLQ, https://arxiv.org/pdf/2007.06482)
 - Optimistic Semidefinite Programming for LQ Control (OSLO, https://proceedings.mlr.press/v97/cohen19b/cohen19b.pdf)
 
@@ -228,6 +227,36 @@ python plot_cdc.py --file results/aircraft_pitch.npz
 - `systems.py`: benchmark-system definitions
 - `simulation.py`: simulation and plotting utilities
 - `algorithms/`: algorithm implementations
+
+## Hyperparameters
+
+### Aircraft Pitch
+
+Run command: `python run_benchmark.py --suite physical --system 4 --num-trials 40 --num-steps 200 --lam 20 --perturbation 0.01 --solver sda`
+
+| Algorithm | Key hyperparameters |
+|-----------|---------------------|
+| IR-LQR    | `beta=1`, `use_invsqrt=False` |
+| TS        | `beta=1e-3` |
+| CEC+PE    | `init_act_std=1.0` |
+| LagLQ     | `beta=1e-3`, `penalty_aux=1e4`, `solver="sda"` |
+| OSLO      | `mu=1e-3`, `beta=1.0` |
+
+All algorithms share `lam=20` and are initialized with `A0=system.A0`, `B0=system.B0`. OSLO additionally requires `sigma=system.noise_sigma`.
+
+### UAV 2
+
+Run command: `python run_benchmark.py --suite stabl --system 2 --num-trials 40 --num-steps 1000 --lam 5 --perturbation 0.1 --solver sda`
+
+| Algorithm | Key hyperparameters |
+|-----------|---------------------|
+| IR-LQR    | `beta=1`, `use_invsqrt=False` |
+| TS        | `beta=1e-3` |
+| CEC+PE    | `init_act_std=0.1` |
+| LagLQ     | `beta=1e-3`, `penalty_aux=1e4`, `solver="sda"` |
+| OSLO      | `mu=1e-3`, `beta=1.0` |
+
+All algorithms share `lam=5` and are initialized with `A0=system.A0`, `B0=system.B0`. OSLO additionally requires `sigma=system.noise_sigma`.
 
 ## Notes
 

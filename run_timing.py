@@ -28,7 +28,6 @@ import matplotlib.pyplot as plt
 
 from simulation import simulate_timed
 from algorithms.irlqr import IRLQR
-from algorithms.cec import CEC
 from algorithms.cec_pe import CECPE
 from algorithms.laglq import LAGLQ
 from algorithms.oslo import OSLO
@@ -37,6 +36,7 @@ from systems import (
     get_benchmark_systems,
     get_physical_systems,
     get_integrator_systems,
+    get_stabl_systems,
     LQRSystem,
 )
 
@@ -57,8 +57,7 @@ def time_on_system(
     algos = {
         "IR-LQR": IRLQR(lam=lam, beta=1, use_invsqrt=False, A0=system.A0, B0=system.B0),
         "TS": TS(lam=lam, beta=1e-3, A0=system.A0, B0=system.B0),
-        "CEC": CEC(lam=lam, A0=system.A0, B0=system.B0),
-        "CEC+PE": CECPE(lam=lam, init_act_std=1.0, A0=system.A0, B0=system.B0),
+        "CEC+PE": CECPE(lam=lam, init_act_std=0.1, A0=system.A0, B0=system.B0),
         "LagLQ": LAGLQ(
             lam=lam,
             beta=1e-3,
@@ -170,7 +169,7 @@ def main():
         "--suite",
         type=str,
         default="all",
-        choices=["all", "physical", "integrator"],
+        choices=["all", "physical", "integrator", "stabl"],
     )
     parser.add_argument("--systems", type=int, nargs="*", default=None)
     parser.add_argument("--perturbation", type=float, default=0.01)
@@ -188,6 +187,7 @@ def main():
         "all": get_benchmark_systems,
         "physical": get_physical_systems,
         "integrator": get_integrator_systems,
+        "stabl": get_stabl_systems,
     }[args.suite]
     systems = suite_fn(sys_key, perturbation=args.perturbation)
 

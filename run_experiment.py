@@ -7,7 +7,6 @@ import jax.numpy as jnp
 
 from simulation import simulate_many, plot_results
 from algorithms.irlqr import IRLQR
-from algorithms.cec import CEC
 from algorithms.cec_pe import CECPE
 from algorithms.laglq import LAGLQ
 from algorithms.oslo import OSLO, simulate_oslo_many
@@ -53,7 +52,6 @@ def main() -> None:
     scan_algos = {
         "IR-LQR": IRLQR(lam=1.0, beta=0.05, use_invsqrt=False, A0=A0, B0=B0),
         "TS": TS(lam=1.0, beta=0.05, A0=A0, B0=B0),
-        "CEC": CEC(lam=1.0, A0=A0, B0=B0),
         "CEC+PE": CECPE(lam=1.0, init_act_std=1.0, A0=A0, B0=B0),
         "LagLQ": LAGLQ(
             lam=1.0,

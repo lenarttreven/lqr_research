@@ -37,7 +37,6 @@ import numpy as np
 
 from simulation import simulate_many
 from algorithms.irlqr import IRLQR
-from algorithms.cec import CEC
 from algorithms.cec_pe import CECPE
 from algorithms.laglq import LAGLQ
 from algorithms.oslo import OSLO, simulate_oslo_many
@@ -117,8 +116,7 @@ def run_on_system(
     scan_algos = {
         "IR-LQR": IRLQR(lam=lam, beta=1, use_invsqrt=False, A0=system.A0, B0=system.B0),
         "TS": TS(lam=lam, beta=1e-3, A0=system.A0, B0=system.B0),
-        "CEC": CEC(lam=lam, A0=system.A0, B0=system.B0),
-        "CEC+PE": CECPE(lam=lam, init_act_std=1.0, A0=system.A0, B0=system.B0),
+        "CEC+PE": CECPE(lam=lam, init_act_std=0.1, A0=system.A0, B0=system.B0),
         "LagLQ": LAGLQ(
             lam=lam,
             beta=1e-3,
