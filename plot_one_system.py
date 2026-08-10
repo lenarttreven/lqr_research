@@ -53,7 +53,7 @@ DEFAULT_FILE = Path("results/aircraft_pitch.npz")
 DEFAULT_ALGO_ORDER = ("IR-LQR", "TS", "CEC+PE", "LagLQ", "OSLO")
 DEFAULT_LINESTYLES = ("-", "--", ":", "-.")
 ALGORITHM_STYLES = {
-    "IR-LQR": {"label": "IR-LQR (OURS)"},
+    "IR-LQR": {"label": "IR-LQR (ours)"},
     "TS": {"label": "TS"},
     "CEC+PE": {"label": "CEC+PE"},
     "LagLQ": {"label": "LagLQ"},
