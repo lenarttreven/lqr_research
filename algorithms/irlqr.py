@@ -1,7 +1,7 @@
 """Optimism in the Face of Uncertainty (IRLQR) for LQR.
 
 Uses RLS estimation with determinant-doubling trigger and an optimistic
-cost matrix: H_optim = H - beta * V^{-1} (or V^{-1/2}).
+cost matrix: H_optim = H - beta * ||V||^{1/2} V^{-1}.
 """
 
 from typing import NamedTuple
@@ -16,7 +16,6 @@ from lqr_utils import (
     dlqr_joint,
     rls_estimate,
     logdet,
-    sym_invsqrt,
     sclip,
 )
 
@@ -32,7 +31,6 @@ class IRLQRState(NamedTuple):
     H:           Float[Array, "dxu dxu"]   joint cost matrix (cached)
     beta:        Float[Array, ""]          optimism bonus scale
     lam:         Float[Array, ""]          regularization
-    use_invsqrt: bool                      if True, use V^{-1/2} instead of ||V||^{1/2}*V^{-1}
     A0:          Float[Array, "dx dx"]     initial estimate of A
     B0:          Float[Array, "dx du"]     initial estimate of B
     c_lam:       Floar[Array, ""]          max eigenvalue for spectral clipping sclip
@@ -46,7 +44,6 @@ class IRLQRState(NamedTuple):
     H: jax.Array
     beta: jax.Array
     lam: jax.Array
-    use_invsqrt: jax.Array
     A0: jax.Array
     B0: jax.Array
     c_lam : jax.Array
@@ -62,7 +59,6 @@ class IRLQR(LQRAlgorithm):
         self,
         lam: float = 1.0,
         beta: float = 0.05,
-        use_invsqrt: bool = False,
         A0: Float[Array, "dx dx"] | None = None,
         B0: Float[Array, "dx du"] | None = None,
         solver: str = "sda",
@@ -70,7 +66,6 @@ class IRLQR(LQRAlgorithm):
     ):
         self.lam = lam
         self.beta = beta
-        self.use_invsqrt = use_invsqrt
         self.A0 = A0
         self.B0 = B0
         self.solver = solver
@@ -104,7 +99,6 @@ class IRLQR(LQRAlgorithm):
             H=H,
             beta=jnp.array(self.beta, dtype=Q.dtype),
             lam=jnp.array(self.lam, dtype=Q.dtype),
-            use_invsqrt=jnp.array(self.use_invsqrt),
             A0=A0,
             B0=B0,
             c_lam=c_lam
@@ -148,14 +142,13 @@ class IRLQR(LQRAlgorithm):
                 V_cur, S, dx, state.A0, state.B0, state.lam
             )  # (dx, dx), (dx, du)
 
-            # optimism matrix: V^{-1} or V^{-1/2}
+            # optimism matrix
             dxu = V_cur.shape[0]
             O_inv = jax.scipy.linalg.solve(
                 V_cur, jnp.eye(dxu, dtype=V_cur.dtype), assume_a="sym"
             )  # (dxu, dxu)
             O_inv = jnp.sqrt(jnp.linalg.norm(V_cur, ord=2)) * 0.5 * (O_inv + O_inv.T)
-            O_invsqrt = sym_invsqrt(V_cur)  # (dxu, dxu)
-            O = sclip(state.beta * jnp.where(state.use_invsqrt, O_invsqrt, O_inv), self.c_lam)  # (dxu, dxu)
+            O = sclip(state.beta * O_inv, self.c_lam)  # (dxu, dxu)
 
             H_optim = 0.5 * (
                 (state.H - O) + (state.H -  O).T

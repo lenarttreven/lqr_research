@@ -236,7 +236,7 @@ Run command: `python run_benchmark.py --suite physical --system 4 --num-trials 4
 
 | Algorithm | Key hyperparameters |
 |-----------|---------------------|
-| IR-LQR    | `beta=1`, `use_invsqrt=False` |
+| IR-LQR    | `beta=1` |
 | TS        | `beta=1e-3` |
 | CEC+PE    | `init_act_std=1.0` |
 | LagLQ     | `beta=1e-3`, `penalty_aux=1e4`, `solver="sda"` |
@@ -250,7 +250,7 @@ Run command: `python run_benchmark.py --suite stabl --system 2 --num-trials 40 -
 
 | Algorithm | Key hyperparameters |
 |-----------|---------------------|
-| IR-LQR    | `beta=1`, `use_invsqrt=False` |
+| IR-LQR    | `beta=1` |
 | TS        | `beta=1e-3` |
 | CEC+PE    | `init_act_std=0.1` |
 | LagLQ     | `beta=1e-3`, `penalty_aux=1e4`, `solver="sda"` |
