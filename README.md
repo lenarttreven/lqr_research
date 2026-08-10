@@ -170,7 +170,7 @@ from systems import get_physical_systems
 
 key = jax.random.PRNGKey(0)
 system = get_physical_systems(key)[0]
-algo = IRLQR(lam=0.1, beta=0.05, A0=system.A0, B0=system.B0)
+algo = IRLQR(lam=0.1, g1=0, g2=0.05, A0=system.A0, B0=system.B0)
 keys = jax.random.split(key, 5)
 
 results = simulate_many(
@@ -236,7 +236,7 @@ Run command: `python run_benchmark.py --suite physical --system 4 --num-trials 4
 
 | Algorithm | Key hyperparameters |
 |-----------|---------------------|
-| IR-LQR    | `beta=1` |
+| IR-LQR    | `g1=0`, `g2=1` |
 | TS        | `beta=1e-3` |
 | CEC+PE    | `init_act_std=1.0` |
 | LagLQ     | `beta=1e-3`, `penalty_aux=1e4`, `solver="sda"` |
@@ -250,7 +250,7 @@ Run command: `python run_benchmark.py --suite stabl --system 2 --num-trials 40 -
 
 | Algorithm | Key hyperparameters |
 |-----------|---------------------|
-| IR-LQR    | `beta=1` |
+| IR-LQR    | `g1=0`, `g2=1` |
 | TS        | `beta=1e-3` |
 | CEC+PE    | `init_act_std=0.1` |
 | LagLQ     | `beta=1e-3`, `penalty_aux=1e4`, `solver="sda"` |

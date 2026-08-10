@@ -55,7 +55,7 @@ def time_on_system(
     """Run all algorithms on a single system, return results with timing."""
 
     algos = {
-        "IR-LQR": IRLQR(lam=lam, beta=1, A0=system.A0, B0=system.B0),
+        "IR-LQR": IRLQR(lam=lam, g1=0, g2=1, A0=system.A0, B0=system.B0),
         "TS": TS(lam=lam, beta=1e-3, A0=system.A0, B0=system.B0),
         "CEC+PE": CECPE(lam=lam, init_act_std=0.1, A0=system.A0, B0=system.B0),
         "LagLQ": LAGLQ(

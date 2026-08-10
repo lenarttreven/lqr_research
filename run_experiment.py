@@ -50,7 +50,7 @@ def main() -> None:
 
     # -- Define algorithms --
     scan_algos = {
-        "IR-LQR": IRLQR(lam=1.0, beta=0.05, A0=A0, B0=B0),
+        "IR-LQR": IRLQR(lam=1.0, g1=0, g2=0.05, A0=A0, B0=B0),
         "TS": TS(lam=1.0, beta=0.05, A0=A0, B0=B0),
         "CEC+PE": CECPE(lam=1.0, init_act_std=1.0, A0=A0, B0=B0),
         "LagLQ": LAGLQ(

@@ -1,7 +1,7 @@
 """Optimism in the Face of Uncertainty (IRLQR) for LQR.
 
 Uses RLS estimation with determinant-doubling trigger and an optimistic
-cost matrix: H_optim = H - beta * ||V||^{1/2} V^{-1}.
+cost matrix: H_optim = H - (g1 + g2 * ||V^{1/2}||) V^{-1}.
 """
 
 from typing import NamedTuple
@@ -29,7 +29,8 @@ class IRLQRState(NamedTuple):
     S:           Float[Array, "dx dxu"]    RLS cross-correlation
     logdet_V:    Float[Array, ""]          log-det of committed V
     H:           Float[Array, "dxu dxu"]   joint cost matrix (cached)
-    beta:        Float[Array, ""]          optimism bonus scale
+    g1:          Float[Array, ""]          constant optimism bonus scale
+    g2:          Float[Array, ""]          V-dependent optimism bonus scale
     lam:         Float[Array, ""]          regularization
     A0:          Float[Array, "dx dx"]     initial estimate of A
     B0:          Float[Array, "dx du"]     initial estimate of B
@@ -42,7 +43,8 @@ class IRLQRState(NamedTuple):
     S: jax.Array
     logdet_V: jax.Array
     H: jax.Array
-    beta: jax.Array
+    g1: jax.Array
+    g2: jax.Array
     lam: jax.Array
     A0: jax.Array
     B0: jax.Array
@@ -58,14 +60,16 @@ class IRLQR(LQRAlgorithm):
     def __init__(
         self,
         lam: float = 1.0,
-        beta: float = 0.05,
+        g1: float = 0.0,
+        g2: float = 0.05,
         A0: Float[Array, "dx dx"] | None = None,
         B0: Float[Array, "dx du"] | None = None,
         solver: str = "sda",
         c_lam: float = 1,
     ):
         self.lam = lam
-        self.beta = beta
+        self.g1 = g1
+        self.g2 = g2
         self.A0 = A0
         self.B0 = B0
         self.solver = solver
@@ -97,7 +101,8 @@ class IRLQR(LQRAlgorithm):
             S=S,
             logdet_V=logdet(V),
             H=H,
-            beta=jnp.array(self.beta, dtype=Q.dtype),
+            g1=jnp.array(self.g1, dtype=Q.dtype),
+            g2=jnp.array(self.g2, dtype=Q.dtype),
             lam=jnp.array(self.lam, dtype=Q.dtype),
             A0=A0,
             B0=B0,
@@ -147,8 +152,9 @@ class IRLQR(LQRAlgorithm):
             O_inv = jax.scipy.linalg.solve(
                 V_cur, jnp.eye(dxu, dtype=V_cur.dtype), assume_a="sym"
             )  # (dxu, dxu)
-            O_inv = jnp.sqrt(jnp.linalg.norm(V_cur, ord=2)) * 0.5 * (O_inv + O_inv.T)
-            O = sclip(state.beta * O_inv, self.c_lam)  # (dxu, dxu)
+            O_inv = 0.5 * (O_inv + O_inv.T)
+            V_sqrt_norm = jnp.sqrt(jnp.linalg.norm(V_cur, ord=2))
+            O = sclip((state.g1 + state.g2 * V_sqrt_norm) * O_inv, self.c_lam)  # (dxu, dxu)
 
             H_optim = 0.5 * (
                 (state.H - O) + (state.H -  O).T
