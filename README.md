@@ -10,11 +10,6 @@ Implemented algorithms:
 - Optimistic LQR via Lagrangian Relaxation (LagLQ, https://arxiv.org/pdf/2007.06482)
 - Optimistic Semidefinite Programming for LQ Control (OSLO, https://proceedings.mlr.press/v97/cohen19b/cohen19b.pdf)
 
-The benchmark suite includes:
-
-- 7 classic physical systems
-- 10 discretized integrator-chain systems
-
 ## Requirements
 
 - Python 3.10+
@@ -46,13 +41,53 @@ uv python install 3.11
 uv sync --python 3.11
 ```
 
-## Usage
-
-First, activate the virtual environment:
+Either run commands through `uv run`, as in the paper-reproduction commands
+below, or activate the virtual environment once per shell session:
 
 ```bash
 source .venv/bin/activate
 ```
+
+## Reproducing the Paper Results
+
+The repository includes the saved benchmark and controller-timing results used
+by the combined aircraft-pitch and UAV-2D plot. To reproduce the paper figure
+from those existing results, run:
+
+```bash
+uv run python plot_2_systems.py --no-show
+```
+
+`plot_2_systems.py` only loads the existing files under `results/`; it does not
+run simulations or timing benchmarks. It writes the combined figure to
+`cdc_2_systems.pdf`. Omit `--no-show` to also display the figure interactively.
+
+To reproduce both the simulations and the figure from scratch, run:
+
+```bash
+uv run python run_2_systems.py --no-show
+```
+
+`run_2_systems.py` performs the benchmark simulations, measures controller
+update times, saves the new results under `results/`, and then calls the same
+plotting functionality as `plot_2_systems.py`. It uses:
+
+- aircraft pitch: `lam=20`, `perturbation=0.01`
+- UAV 2D: `lam=5`, `perturbation=0.1`
+- 40 trials, 200 simulation steps, and 200 timing steps by default
+- the existing per-system IR-LQR tunings in `results/irlqr_cv/`
+
+Once `run_2_systems.py` has completed at least once, either command produces
+the plot from the same saved inputs. Custom locations can be selected with
+`--output-dir` and `--figure-path` for `run_2_systems.py`, or `--results-dir`
+and `--figure-path` for `plot_2_systems.py`.
+
+## Benchmark Suite and Other Usage
+
+The benchmark suite includes:
+
+- 7 classic physical systems
+- 10 discretized integrator-chain systems
 
 ### Run the small example experiment
 
@@ -133,18 +168,25 @@ five-fold trajectory cross-validation grid:
 ```bash
 python tune_irlqr.py \
   --suite stabl --system uav_2d \
-  --g1-values 0 0.01 0.1 1 \
-  --g2-values 0 0.01 0.1 1 \
-  --num-trials 40 --num-folds 5 --num-steps 1000
+  --g1-values 0.00001 0.0001 0.001 0.01 \
+  --g2-values 0.00001 0.0001 0.001 0.01 \
+  --num-trials 40 --num-folds 5 --num-steps 200 \
+  --perturbation 0.01
 ```
 
 Every grid point uses the same system prior and process-noise trajectories.
+Configurations are ranked first by total fallback-controller uses and then by
+cross-validation regret, so a configuration that never falls back is preferred
+whenever one exists.
 The system can be selected by name or by its zero-based index within the
 chosen suite, for example `--suite physical --system cart_pole` or
 `--suite integrator --system 3`. The command prints the best pair and saves
 each system's fold scores separately under `results/irlqr_cv/<system>.csv`.
-Use `--output` to override that path. The selected values can then be passed
-to the benchmark with `--irlqr-g1` and `--irlqr-g2`.
+Use `--output` to override that path. By default, the benchmark loads each
+system's selected `g1` and `g2` from its CSV in `results/irlqr_cv/`. Explicit
+`--irlqr-g1` and `--irlqr-g2` values override the tuned values. If a system has
+no tuning CSV, the benchmark falls back to the hardcoded values `g1=0` and
+`g2=1`.
 
 After tuning, the command also plots the median cumulative regret (with a
 20th--80th percentile band) for the three best configurations. Choose how many
@@ -154,8 +196,9 @@ by repeating `--plot-config G1 G2`:
 ```bash
 python tune_irlqr.py \
   --suite stabl --system uav_2d \
-  --g1-values 0 0.01 0.1 1 --g2-values 0 0.01 0.1 1 \
-  --plot-top-k 1 --plot-config 0 1 --plot-config 1 0 \
+  --g1-values 0.00001 0.0001 0.001 0.01 \
+  --g2-values 0.00001 0.0001 0.001 0.01 \
+  --plot-top-k 1 --plot-config 0.00001 0.01 --plot-config 0.01 0.00001 \
   --plot-output figures/uav_2d_irlqr_tuning.pdf
 ```
 
@@ -226,42 +269,13 @@ results = simulate_many(
 
 `results["regrets"]` contains one regret trajectory per trial.
 
-### Reproduce the CDC paper figure
-
-To generate the figure from scratch (no pre-existing benchmark or timing data):
-
-```bash
-# Step 1: Run the benchmark for the aircraft_pitch system
-python run_benchmark.py --suite physical --system 4 --num-trials 40 --num-steps 200 --lam 20 --perturbation 0.01 --solver sda
-
-# Step 2: Run the timing benchmark for the same system
-python run_timing.py --suite physical --system 4 --num-steps 200 --lam 20 --perturbation 0.01
-
-# Step 3: Plot the figure
-python plot_cdc.py \
-  --file results/aircraft_pitch.npz \
-  --timing-file results/timing_physical.pkl \
-  --save-path figures/cdc_aircraft_pitch.pdf
-```
-
-To just view the plot interactively (without saving):
-
-```bash
-python plot_cdc.py --file results/aircraft_pitch.npz --timing-file results/timing_physical.pkl
-```
-
-If you only want the regret and controller-update panels (no timing bar chart), omit `--timing-file`:
-
-```bash
-python plot_cdc.py --file results/aircraft_pitch.npz
-```
-
 ## Repository Layout
 
 - `run_experiment.py`: small example experiment
 - `run_benchmark.py`: run benchmark experiments and save results to disk
 - `plot_benchmark.py`: load saved results and plot them
 - `run_timing.py`: controller computation time benchmark
+- `run_2_systems.py`: run, time, and plot the aircraft and UAV examples
 - `systems.py`: benchmark-system definitions
 - `simulation.py`: simulation and plotting utilities
 - `algorithms/`: algorithm implementations
@@ -270,13 +284,13 @@ python plot_cdc.py --file results/aircraft_pitch.npz
 
 ### Aircraft Pitch
 
-Run command: `python run_benchmark.py --suite physical --system 4 --num-trials 40 --num-steps 200 --lam 20 --perturbation 0.01 --solver sda`
+Run command: `python run_benchmark.py --suite physical --systems 4 --num-trials 40 --num-steps 200 --lam 20 --perturbation 0.01 --solver sda`
 
 | Algorithm | Key hyperparameters |
 |-----------|---------------------|
-| IR-LQR    | `g1=0`, `g2=1` |
+| IR-LQR    | `g1=0.01`, `g2=0.001` (loaded from tuning CSV) |
 | TS        | `beta=1e-3` |
-| CEC+PE    | `init_act_std=1.0` |
+| CEC+PE    | `init_act_std=0.1` |
 | LagLQ     | `beta=1e-3`, `penalty_aux=1e4`, `solver="sda"` |
 | OSLO      | `mu=1e-3`, `beta=1.0` |
 
@@ -284,11 +298,11 @@ All algorithms share `lam=20` and are initialized with `A0=system.A0`, `B0=syste
 
 ### UAV 2
 
-Run command: `python run_benchmark.py --suite stabl --system 2 --num-trials 40 --num-steps 1000 --lam 5 --perturbation 0.1 --solver sda`
+Run command: `python run_benchmark.py --suite stabl --systems 2 --num-trials 40 --num-steps 200 --lam 5 --perturbation 0.1 --solver sda`
 
 | Algorithm | Key hyperparameters |
 |-----------|---------------------|
-| IR-LQR    | `g1=0`, `g2=1` |
+| IR-LQR    | `g1=0.01`, `g2=0.01` (loaded from tuning CSV) |
 | TS        | `beta=1e-3` |
 | CEC+PE    | `init_act_std=0.1` |
 | LagLQ     | `beta=1e-3`, `penalty_aux=1e4`, `solver="sda"` |

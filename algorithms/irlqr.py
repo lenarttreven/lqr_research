@@ -16,7 +16,6 @@ from lqr_utils import (
     dlqr_joint,
     rls_estimate,
     logdet,
-    sclip,
 )
 
 
@@ -34,7 +33,8 @@ class IRLQRState(NamedTuple):
     lam:         Float[Array, ""]          regularization
     A0:          Float[Array, "dx dx"]     initial estimate of A
     B0:          Float[Array, "dx du"]     initial estimate of B
-    c_lam:       Floar[Array, ""]          max eigenvalue for spectral clipping sclip
+    c_lam:       Float[Array, ""]          maximum admissible optimism eigenvalue
+    fallback_count: Int[Array, ""]         cumulative number of fallback uses
     """
 
     K: jax.Array
@@ -49,6 +49,7 @@ class IRLQRState(NamedTuple):
     A0: jax.Array
     B0: jax.Array
     c_lam : jax.Array
+    fallback_count: jax.Array
 
 
 class IRLQR(LQRAlgorithm):
@@ -65,7 +66,6 @@ class IRLQR(LQRAlgorithm):
         A0: Float[Array, "dx dx"] | None = None,
         B0: Float[Array, "dx du"] | None = None,
         solver: str = "sda",
-        c_lam: float = 1,
     ):
         self.lam = lam
         self.g1 = g1
@@ -73,7 +73,6 @@ class IRLQR(LQRAlgorithm):
         self.A0 = A0
         self.B0 = B0
         self.solver = solver
-        self.c_lam = c_lam
 
     def init_state(
         self,
@@ -88,8 +87,7 @@ class IRLQR(LQRAlgorithm):
         S = jnp.zeros((dx, dxu), dtype=Q.dtype)  # (dx, dxu)
         A0 = self.A0 if self.A0 is not None else jnp.zeros((dx, dx), dtype=Q.dtype)
         B0 = self.B0 if self.B0 is not None else jnp.zeros((dx, du), dtype=Q.dtype)
-        Heigs, _ = jnp.linalg.eigh(H)
-        c_lam = Heigs[0]*0.95
+        c_lam = 0.95 * jnp.linalg.eigvalsh(H)[0]
 
         # compute initial controller from (A0, B0)
         K, _ = dlqr_joint(A0, B0, H, solver=self.solver)
@@ -106,7 +104,8 @@ class IRLQR(LQRAlgorithm):
             lam=jnp.array(self.lam, dtype=Q.dtype),
             A0=A0,
             B0=B0,
-            c_lam=c_lam
+            c_lam=c_lam,
+            fallback_count=jnp.array(0, dtype=jnp.int32),
         )
 
     def get_action(
@@ -141,11 +140,7 @@ class IRLQR(LQRAlgorithm):
         do_update = logdet_V_cur > (state.logdet_V + jnp.log(2.0))
 
         def update_branch(args):
-            K, V, logdet_V = args
-
-            A_hat, B_hat = rls_estimate(
-                V_cur, S, dx, state.A0, state.B0, state.lam
-            )  # (dx, dx), (dx, du)
+            K, V, logdet_V, fallback_count = args
 
             # optimism matrix
             dxu = V_cur.shape[0]
@@ -154,22 +149,49 @@ class IRLQR(LQRAlgorithm):
             )  # (dxu, dxu)
             O_inv = 0.5 * (O_inv + O_inv.T)
             V_sqrt_norm = jnp.sqrt(jnp.linalg.norm(V_cur, ord=2))
-            O = sclip((state.g1 + state.g2 * V_sqrt_norm) * O_inv, self.c_lam)  # (dxu, dxu)
+            O = (state.g1 + state.g2 * V_sqrt_norm) * O_inv  # (dxu, dxu)
+            optimism_is_admissible = jnp.linalg.eigvalsh(O)[-1] < state.c_lam
 
-            H_optim = 0.5 * (
-                (state.H - O) + (state.H -  O).T
-            )  # (dxu, dxu)
-            K_new, _ = dlqr_joint(A_hat, B_hat, H_optim, solver=self.solver)  # (du, dx)
-            return (K_new, V_cur, logdet_V_cur)
+            def synthesize_controller(K_previous):
+                A_hat, B_hat = rls_estimate(
+                    V_cur, S, dx, state.A0, state.B0, state.lam
+                )  # (dx, dx), (dx, du)
+                H_optim = 0.5 * (
+                    (state.H - O) + (state.H - O).T
+                )  # (dxu, dxu)
+                K_new, _ = dlqr_joint(
+                    A_hat, B_hat, H_optim, solver=self.solver
+                )  # (du, dx)
+                return K_new
+
+            # Until a fallback synthesis procedure is implemented, keep the
+            # previous controller whenever the optimism matrix is too large.
+            K_new = jax.lax.cond(
+                optimism_is_admissible,
+                synthesize_controller,
+                lambda K_previous: K_previous,
+                K,
+            )
+            fallback_count = fallback_count + (~optimism_is_admissible).astype(
+                fallback_count.dtype
+            )
+            return (K_new, V_cur, logdet_V_cur, fallback_count)
 
         def no_update_branch(args):
             return args
 
-        K, V, logdet_V = jax.lax.cond(
+        K, V, logdet_V, fallback_count = jax.lax.cond(
             do_update,
             update_branch,
             no_update_branch,
-            operand=(state.K, state.V, state.logdet_V),
+            operand=(state.K, state.V, state.logdet_V, state.fallback_count),
         )
 
-        return state._replace(K=K, V=V, V_cur=V_cur, S=S, logdet_V=logdet_V)
+        return state._replace(
+            K=K,
+            V=V,
+            V_cur=V_cur,
+            S=S,
+            logdet_V=logdet_V,
+            fallback_count=fallback_count,
+        )

@@ -21,7 +21,22 @@ venv/
 # Jupyter
 .ipynb_checkpoints/
 
-# Results and figures
+# Generated data (ignored by default)
+*.csv
+*.npy
 *.pdf
 *.npz
 *.pkl
+*.pickle
+*.parquet
+*.feather
+*.h5
+*.hdf5
+
+# Paper figure inputs kept in the repository
+!results/aircraft_pitch.npz
+!results/uav_2d.npz
+!results/timing_physical.pkl
+!results/timing_stabl.pkl
+!results/irlqr_cv/aircraft_pitch.csv
+!results/irlqr_cv/uav_2d.csv

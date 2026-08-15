@@ -27,6 +27,7 @@ Usage:
 """
 
 import argparse
+import csv
 import os
 
 import jax
@@ -48,6 +49,53 @@ from systems import (
     get_stabl_systems,
     LQRSystem,
 )
+
+IRLQR_TUNING_DIR = os.path.join("results", "irlqr_cv")
+IRLQR_DEFAULT_G1 = 0.0
+IRLQR_DEFAULT_G2 = 1.0
+
+
+def resolve_irlqr_parameters(
+    system_name: str,
+    g1_override: float | None,
+    g2_override: float | None,
+    tuning_dir: str = IRLQR_TUNING_DIR,
+) -> tuple[float, float, str]:
+    """Resolve per-system IR-LQR parameters and describe their source."""
+    safe_name = system_name.replace(" ", "_").replace("/", "_")
+    tuning_path = os.path.join(tuning_dir, f"{safe_name}.csv")
+    tuned = None
+
+    if (g1_override is None or g2_override is None) and os.path.isfile(tuning_path):
+        with open(tuning_path, newline="") as file:
+            row = next(csv.DictReader(file), None)
+        if row is None:
+            raise ValueError(f"IR-LQR tuning file is empty: {tuning_path}")
+        try:
+            tuned = (float(row["g1"]), float(row["g2"]))
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(
+                "IR-LQR tuning file must contain numeric g1 and g2 columns: "
+                f"{tuning_path}"
+            ) from error
+
+    g1 = g1_override if g1_override is not None else (
+        tuned[0] if tuned is not None else IRLQR_DEFAULT_G1
+    )
+    g2 = g2_override if g2_override is not None else (
+        tuned[1] if tuned is not None else IRLQR_DEFAULT_G2
+    )
+
+    sources = []
+    for name, override in (("g1", g1_override), ("g2", g2_override)):
+        if override is not None:
+            source = "command line"
+        elif tuned is not None:
+            source = tuning_path
+        else:
+            source = "hardcoded default"
+        sources.append(f"{name}: {source}")
+    return float(g1), float(g2), "; ".join(sources)
 
 
 def save_data(
@@ -104,8 +152,8 @@ def run_on_system(
     num_steps: int,
     key: jax.Array,
     lam: float = 0.1,
-    irlqr_g1: float = 0.0,
-    irlqr_g2: float = 1.0,
+    irlqr_g1: float = IRLQR_DEFAULT_G1,
+    irlqr_g2: float = IRLQR_DEFAULT_G2,
     oslo_mu: float = 1.0,
     oslo_beta: float = 1.0,
     laglq_beta: float = 0.05,
@@ -214,14 +262,20 @@ def main():
     parser.add_argument(
         "--irlqr-g1",
         type=float,
-        default=0.0,
-        help="IR-LQR constant optimism scale g1. Default: 0.",
+        default=None,
+        help=(
+            "Override IR-LQR g1. By default, load the selected system's tuning "
+            "CSV, falling back to 0 if it is unavailable."
+        ),
     )
     parser.add_argument(
         "--irlqr-g2",
         type=float,
-        default=1.0,
-        help="IR-LQR V-dependent optimism scale g2. Default: 1.",
+        default=None,
+        help=(
+            "Override IR-LQR g2. By default, load the selected system's tuning "
+            "CSV, falling back to 1 if it is unavailable."
+        ),
     )
     parser.add_argument(
         "--oslo-mu",
@@ -288,6 +342,14 @@ def main():
         print(f"System {idx}: {system.name}  (d_x={d_x}, d_u={d_u})")
         print(f"{'='*60}")
 
+        irlqr_g1, irlqr_g2, irlqr_parameter_source = resolve_irlqr_parameters(
+            system.name, args.irlqr_g1, args.irlqr_g2
+        )
+        print(
+            f"  IR-LQR parameters: g1={irlqr_g1:g}, g2={irlqr_g2:g} "
+            f"({irlqr_parameter_source})"
+        )
+
         key, run_key = jax.random.split(key)
         results = run_on_system(
             system,
@@ -295,8 +357,8 @@ def main():
             args.num_steps,
             run_key,
             lam=args.lam,
-            irlqr_g1=args.irlqr_g1,
-            irlqr_g2=args.irlqr_g2,
+            irlqr_g1=irlqr_g1,
+            irlqr_g2=irlqr_g2,
             oslo_mu=args.oslo_mu,
             oslo_beta=args.oslo_beta,
             laglq_beta=args.laglq_beta,
@@ -311,7 +373,15 @@ def main():
 
         for name, res in results.items():
             median_regret = jnp.median(jnp.sum(res["regrets"], axis=1))
-            print(f"  {name}: median cum. regret = {median_regret:.2f}")
+            summary = f"  {name}: median cum. regret = {median_regret:.2f}"
+            if name == "IR-LQR":
+                fallback_uses = res["cum_fallback_uses"][:, -1]
+                summary += (
+                    f", fallback uses = {int(jnp.sum(fallback_uses))} total "
+                    f"(median {float(jnp.median(fallback_uses)):.1f} per trial, "
+                    f"range {int(jnp.min(fallback_uses))}–{int(jnp.max(fallback_uses))})"
+                )
+            print(summary)
 
         save_data(results, system.name, args.output_dir)
 

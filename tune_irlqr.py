@@ -1,22 +1,23 @@
 """Tune IR-LQR's g1 and g2 using trajectory cross-validation.
 
-Each grid point is evaluated on the same random trajectories. Trials are
-partitioned into folds, and the score of a grid point is the mean of its
-fold-level median final cumulative regrets. The full table is saved as CSV,
-and cumulative regret is plotted for the best configurations.
+Each grid point is evaluated on the same random trajectories. Configurations
+are ranked lexicographically: first by the total number of fallback uses, then
+by the mean fold-level median final cumulative regret. This makes avoiding the
+fallback controller the primary tuning objective. The full table is saved as
+CSV, and cumulative regret is plotted for the best configurations.
 
 Example using every configurable argument:
     python tune_irlqr.py \
         --suite stabl \
         --system uav_2d \
-        --g1-values 0 0.01 0.1 1 \
-        --g2-values 0 0.001 0.01 0.1 \
+        --g1-values 0.00001 0.0001 0.001 0.01 \
+        --g2-values 0.00001 0.0001 0.001 0.01 \
         --num-trials 40 \
         --num-folds 5 \
-        --num-steps 1000 \
+        --num-steps 200 \
         --seed 0 \
         --lam 5 \
-        --perturbation 0.1 \
+        --perturbation 0.01 \
         --solver sda \
         --plot-top-k 3 \
         --plot-config 0 1 \
@@ -138,6 +139,7 @@ def tune(
             solver=solver,
         )
         cumulative_regrets = np.asarray(jnp.sum(results["regrets"], axis=1))
+        fallback_uses = np.asarray(results["cum_fallback_uses"][:, -1])
         if keep_regrets:
             regrets_by_config[(g1, g2)] = np.asarray(results["regrets"])
         finite = np.isfinite(cumulative_regrets)
@@ -156,14 +158,26 @@ def tune(
             "median_regret": float(np.median(cumulative_regrets)),
             "mean_regret": float(np.mean(cumulative_regrets)),
             "num_finite": int(finite.sum()),
+            "total_fallback_uses": int(np.sum(fallback_uses)),
+            "trials_with_fallback": int(np.count_nonzero(fallback_uses)),
+            "median_fallback_uses": float(np.median(fallback_uses)),
+            "max_fallback_uses": int(np.max(fallback_uses)),
         }
         row.update(
             {f"fold_{fold + 1}": float(score) for fold, score in enumerate(fold_scores)}
         )
         rows.append(row)
-        print(f"          CV score: {cv_score:.6g}", flush=True)
+        print(
+            f"          fallback uses: {row['total_fallback_uses']} total "
+            f"across {row['trials_with_fallback']}/{num_trials} trials; "
+            f"CV score: {cv_score:.6g}",
+            flush=True,
+        )
 
-    return sorted(rows, key=lambda row: row["cv_score"]), regrets_by_config
+    return sorted(
+        rows,
+        key=lambda row: (row["total_fallback_uses"], row["cv_score"]),
+    ), regrets_by_config
 
 
 def select_plot_configs(
@@ -237,7 +251,9 @@ def save_rows(rows: list[dict], output: str) -> None:
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
     with open(output, "w", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=list(rows[0]))
+        writer = csv.DictWriter(
+            file, fieldnames=list(rows[0]), lineterminator="\n"
+        )
         writer.writeheader()
         writer.writerows(rows)
 
@@ -258,17 +274,17 @@ def main() -> None:
         help="System name or zero-based index within the suite. Default: uav_2d.",
     )
     parser.add_argument(
-        "--g1-values", type=float, nargs="+", default=[0.0, 0.01, 0.1, 1.0]
+        "--g1-values", type=float, nargs="+", default=[0.00001, 0.0001, 0.001, 0.01]
     )
     parser.add_argument(
-        "--g2-values", type=float, nargs="+", default=[0.0, 0.001, 0.01, 0.1]
+        "--g2-values", type=float, nargs="+", default=[0.00001, 0.0001, 0.001, 0.01]
     )
     parser.add_argument("--num-trials", type=int, default=40)
     parser.add_argument("--num-folds", type=int, default=5)
-    parser.add_argument("--num-steps", type=int, default=1_000)
+    parser.add_argument("--num-steps", type=int, default=200)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--lam", type=float, default=5.0)
-    parser.add_argument("--perturbation", type=float, default=0.1)
+    parser.add_argument("--perturbation", type=float, default=0.01)
     parser.add_argument(
         "--solver", choices=["schur", "sda", "riccati"], default="sda"
     )
@@ -284,7 +300,7 @@ def main() -> None:
         "--plot-top-k",
         type=int,
         default=3,
-        help="Plot the top K configurations by CV score. Default: 3.",
+        help="Plot the top K configurations by fallback uses, then CV score. Default: 3.",
     )
     parser.add_argument(
         "--plot-config",
@@ -346,6 +362,8 @@ def main() -> None:
     print("\nBest hyperparameters")
     print(f"  g1={best['g1']:g}")
     print(f"  g2={best['g2']:g}")
+    print(f"  total fallback uses={best['total_fallback_uses']}")
+    print(f"  trials with fallback={best['trials_with_fallback']}/{args.num_trials}")
     print(f"  CV score={best['cv_score']:.6g}")
     print(f"Full results saved to {output}")
 

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import NullFormatter
 
 from plot_one_system import (
     ALGORITHM_STYLES,
@@ -67,6 +69,15 @@ def _compute_band(
     return mean_sem_band(samples)
 
 
+def set_two_power_ticks(ax) -> None:
+    """Label a log timing axis only at 10^0 and 10^1 milliseconds."""
+    exponents = (0, 1)
+    ticks = [10.0**exponent for exponent in exponents]
+    labels = [rf"$10^{{{exponent}}}$" for exponent in exponents]
+    ax.set_yticks(ticks, labels=labels)
+    ax.yaxis.set_minor_formatter(NullFormatter())
+
+
 SYSTEM_NAME_FONTSIZE = 19
 LABEL_FONT_SIZE = 18
 AX_TITLE_FONT_SIZE = 18
@@ -87,20 +98,23 @@ plt.rc(
 
 LOWER_QUANTILE = 0.2
 UPPER_QUANTILE = 0.8
-SAVE_PATH = Path("cdc_2_systems.pdf")
 EXCLUDED_ALGORITHMS = set()
-SYSTEM_SPECS = (
-    {
-        "label": r"\textbf{Aircraft pitch}",
-        "results_file": Path("results/aircraft_pitch.npz"),
-        "timing_file": Path("results/timing_physical.pkl"),
-    },
-    {
-        "label": r"\textbf{UAV 2D}",
-        "results_file": Path("results/uav_2d.npz"),
-        "timing_file": Path("results/timing_stabl.pkl"),
-    },
-)
+
+
+def system_specs(results_dir: Path) -> tuple[dict, ...]:
+    """Return the saved inputs produced by ``run_2_systems.py``."""
+    return (
+        {
+            "label": r"\textbf{Aircraft pitch}",
+            "results_file": results_dir / "aircraft_pitch.npz",
+            "timing_file": results_dir / "timing_physical.pkl",
+        },
+        {
+            "label": r"\textbf{UAV 2D}",
+            "results_file": results_dir / "uav_2d.npz",
+            "timing_file": results_dir / "timing_stabl.pkl",
+        },
+    )
 
 
 def build_algorithm_colors(
@@ -220,6 +234,7 @@ def plot_system_row(
     if row_index == 0:
         ax_regret.set_yscale("log")
     ax_timing.set_yscale("log")
+    set_two_power_ticks(ax_timing)
 
     ax_regret.set_ylabel(r"$\mathcal{R}_T$", fontsize=LABEL_FONT_SIZE)
     ax_updates.set_ylabel("Num Updates", fontsize=LABEL_FONT_SIZE)
@@ -234,9 +249,20 @@ def plot_system_row(
         ax_timing.set_title("Controller Update Time", fontsize=AX_TITLE_FONT_SIZE)
 
 
-def main() -> None:
+def plot_saved_results(
+    *,
+    results_dir: Path = Path("results"),
+    save_path: Path = Path("cdc_2_systems.pdf"),
+    show: bool = True,
+) -> None:
+    """Plot existing benchmark and timing files without running simulations."""
     ordered_systems = []
-    for spec in SYSTEM_SPECS:
+    for spec in system_specs(results_dir):
+        for input_path in (spec["results_file"], spec["timing_file"]):
+            if not input_path.is_file():
+                raise FileNotFoundError(
+                    f"missing {input_path}; run run_2_systems.py first"
+                )
         system_name, results = load_benchmark_npz(spec["results_file"])
         ordered_results = reorder_algorithms(results, DEFAULT_ALGO_ORDER)
         filtered_results = {
@@ -300,9 +326,31 @@ def main() -> None:
         fontsize=LEGEND_FONT_SIZE,
     )
 
-    SAVE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(SAVE_PATH, bbox_inches="tight")
-    plt.show()
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path, bbox_inches="tight")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Plot saved outputs from run_2_systems.py without rerunning simulations."
+    )
+    parser.add_argument("--results-dir", type=Path, default=Path("results"))
+    parser.add_argument("--figure-path", type=Path, default=Path("cdc_2_systems.pdf"))
+    parser.add_argument("--no-show", action="store_true")
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    plot_saved_results(
+        results_dir=args.results_dir,
+        save_path=args.figure_path,
+        show=not args.no_show,
+    )
 
 
 if __name__ == "__main__":

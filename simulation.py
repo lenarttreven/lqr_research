@@ -68,10 +68,13 @@ def simulate(
         K = algo_state.K  # (du, dx)
 
         carry_next = (key, x_next, algo_state)
-        return carry_next, (cost, regret, K)
+        fallback_count = getattr(
+            algo_state, "fallback_count", jnp.array(0, dtype=jnp.int32)
+        )
+        return carry_next, (cost, regret, K, fallback_count)
 
     init_carry = (key, x0, algo_state)
-    _, (costs, regrets, gains) = jax.lax.scan(
+    _, (costs, regrets, gains, cum_fallback_uses) = jax.lax.scan(
         one_step, init_carry, xs=jnp.arange(num_steps, dtype=jnp.int32)
     )
 
@@ -93,6 +96,7 @@ def simulate(
         "optimal_cost": optimal_cost,
         "k_star": k_star,  # (du, dx)
         "cum_updates": cum_updates,  # (T,)
+        "cum_fallback_uses": cum_fallback_uses,  # (T,)
     }
 
 

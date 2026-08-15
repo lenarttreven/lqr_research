@@ -27,6 +27,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from simulation import simulate_timed
+from run_benchmark import resolve_irlqr_parameters
 from algorithms.irlqr import IRLQR
 from algorithms.cec_pe import CECPE
 from algorithms.laglq import LAGLQ
@@ -46,6 +47,8 @@ def time_on_system(
     num_steps: int,
     key: jax.Array,
     lam: float = 0.1,
+    irlqr_g1: float = 0.0,
+    irlqr_g2: float = 1.0,
     oslo_mu: float = 0.1,
     oslo_beta: float = 1.0,
     laglq_beta: float = 0.05,
@@ -55,7 +58,13 @@ def time_on_system(
     """Run all algorithms on a single system, return results with timing."""
 
     algos = {
-        "IR-LQR": IRLQR(lam=lam, g1=0, g2=1, A0=system.A0, B0=system.B0),
+        "IR-LQR": IRLQR(
+            lam=lam,
+            g1=irlqr_g1,
+            g2=irlqr_g2,
+            A0=system.A0,
+            B0=system.B0,
+        ),
         "TS": TS(lam=lam, beta=1e-3, A0=system.A0, B0=system.B0),
         "CEC+PE": CECPE(lam=lam, init_act_std=0.1, A0=system.A0, B0=system.B0),
         "LagLQ": LAGLQ(
@@ -174,6 +183,24 @@ def main():
     parser.add_argument("--systems", type=int, nargs="*", default=None)
     parser.add_argument("--perturbation", type=float, default=0.01)
     parser.add_argument("--lam", type=float, default=0.1)
+    parser.add_argument(
+        "--irlqr-g1",
+        type=float,
+        default=None,
+        help=(
+            "Override IR-LQR g1. By default, load the selected system's tuning "
+            "CSV, falling back to 0 if it is unavailable."
+        ),
+    )
+    parser.add_argument(
+        "--irlqr-g2",
+        type=float,
+        default=None,
+        help=(
+            "Override IR-LQR g2. By default, load the selected system's tuning "
+            "CSV, falling back to 1 if it is unavailable."
+        ),
+    )
     parser.add_argument("--oslo-mu", type=float, default=0.1)
     parser.add_argument("--oslo-beta", type=float, default=1.0)
     parser.add_argument("--laglq-beta", type=float, default=0.05)
@@ -202,12 +229,22 @@ def main():
         print(f"System {idx}: {system.name}  (d_x={d_x}, d_u={d_u})")
         print(f"{'='*60}")
 
+        irlqr_g1, irlqr_g2, irlqr_parameter_source = resolve_irlqr_parameters(
+            system.name, args.irlqr_g1, args.irlqr_g2
+        )
+        print(
+            f"  IR-LQR parameters: g1={irlqr_g1:g}, g2={irlqr_g2:g} "
+            f"({irlqr_parameter_source})"
+        )
+
         key, run_key = jax.random.split(key)
         results = time_on_system(
             system,
             args.num_steps,
             run_key,
             lam=args.lam,
+            irlqr_g1=irlqr_g1,
+            irlqr_g2=irlqr_g2,
             oslo_mu=args.oslo_mu,
             oslo_beta=args.oslo_beta,
             laglq_beta=args.laglq_beta,
