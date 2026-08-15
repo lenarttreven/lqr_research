@@ -104,6 +104,8 @@ def run_on_system(
     num_steps: int,
     key: jax.Array,
     lam: float = 0.1,
+    irlqr_g1: float = 0.0,
+    irlqr_g2: float = 1.0,
     oslo_mu: float = 1.0,
     oslo_beta: float = 1.0,
     laglq_beta: float = 0.05,
@@ -114,7 +116,14 @@ def run_on_system(
     """Run all algorithms on a single system, return results dict."""
 
     scan_algos = {
-        "IR-LQR": IRLQR(lam=lam, g1=0, g2=1, A0=system.A0, B0=system.B0),
+        "IR-LQR": IRLQR(
+            lam=lam,
+            g1=irlqr_g1,
+            g2=irlqr_g2,
+            A0=system.A0,
+            B0=system.B0,
+            solver=solver,
+        ),
         "TS": TS(lam=lam, beta=1e-3, A0=system.A0, B0=system.B0),
         "CEC+PE": CECPE(lam=lam, init_act_std=0.1, A0=system.A0, B0=system.B0),
         "LagLQ": LAGLQ(
@@ -203,6 +212,18 @@ def main():
         help="Regularization parameter lambda for RLS. Default: 0.1.",
     )
     parser.add_argument(
+        "--irlqr-g1",
+        type=float,
+        default=0.0,
+        help="IR-LQR constant optimism scale g1. Default: 0.",
+    )
+    parser.add_argument(
+        "--irlqr-g2",
+        type=float,
+        default=1.0,
+        help="IR-LQR V-dependent optimism scale g2. Default: 1.",
+    )
+    parser.add_argument(
         "--oslo-mu",
         type=float,
         default=0.1,
@@ -274,6 +295,8 @@ def main():
             args.num_steps,
             run_key,
             lam=args.lam,
+            irlqr_g1=args.irlqr_g1,
+            irlqr_g2=args.irlqr_g2,
             oslo_mu=args.oslo_mu,
             oslo_beta=args.oslo_beta,
             laglq_beta=args.laglq_beta,

@@ -127,6 +127,42 @@ Set the random seed:
 python run_benchmark.py --seed 42
 ```
 
+Tune the IR-LQR optimism parameters on the UAV 2-D system with a coarse,
+five-fold trajectory cross-validation grid:
+
+```bash
+python tune_irlqr.py \
+  --suite stabl --system uav_2d \
+  --g1-values 0 0.01 0.1 1 \
+  --g2-values 0 0.01 0.1 1 \
+  --num-trials 40 --num-folds 5 --num-steps 1000
+```
+
+Every grid point uses the same system prior and process-noise trajectories.
+The system can be selected by name or by its zero-based index within the
+chosen suite, for example `--suite physical --system cart_pole` or
+`--suite integrator --system 3`. The command prints the best pair and saves
+each system's fold scores separately under `results/irlqr_cv/<system>.csv`.
+Use `--output` to override that path. The selected values can then be passed
+to the benchmark with `--irlqr-g1` and `--irlqr-g2`.
+
+After tuning, the command also plots the median cumulative regret (with a
+20th--80th percentile band) for the three best configurations. Choose how many
+ranked configurations to include with `--plot-top-k`, and add exact grid points
+by repeating `--plot-config G1 G2`:
+
+```bash
+python tune_irlqr.py \
+  --suite stabl --system uav_2d \
+  --g1-values 0 0.01 0.1 1 --g2-values 0 0.01 0.1 1 \
+  --plot-top-k 1 --plot-config 0 1 --plot-config 1 0 \
+  --plot-output figures/uav_2d_irlqr_tuning.pdf
+```
+
+Without `--plot-output`, the figure is shown interactively. Use `--no-plot` to
+skip it. Every plotted curve uses the same trials already evaluated during
+tuning, so plotting does not rerun the experiment.
+
 Save results to a custom directory:
 
 ```bash
@@ -139,6 +175,8 @@ Tune selected algorithm hyperparameters:
 ```bash
 python run_benchmark.py \
   --lam 0.1 \
+  --irlqr-g1 0.0 \
+  --irlqr-g2 1.0 \
   --oslo-mu 0.1 \
   --oslo-beta 1.0 \
   --laglq-delta 0.05

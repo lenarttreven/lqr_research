@@ -24,6 +24,7 @@ classifiers = [
 [project.scripts]
 lqr-benchmark = "run_benchmark:main"
 lqr-experiment = "run_experiment:main"
+lqr-tune-irlqr = "tune_irlqr:main"
 
 [tool.uv]
 package = true
@@ -35,6 +36,7 @@ py-modules = [
     "run_experiment",
     "simulation",
     "systems",
+    "tune_irlqr",
 ]
 
 [tool.setuptools.packages.find]
